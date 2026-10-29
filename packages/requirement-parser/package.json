@@ -1,0 +1,27 @@
+{
+  "name": "@assembler/requirement-parser",
+  "version": "0.1.0",
+  "description": "Deterministic natural-language requirement interpreter: lexicon, clause scoping, extraction rules and clarification detection.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@assembler/core": "workspace:*",
+    "@assembler/project-spec": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "18.19.50",
+    "typescript": "5.6.3",
+    "vitest": "2.1.9"
+  }
+}

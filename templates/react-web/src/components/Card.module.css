@@ -1,0 +1,22 @@
+.card {
+  background: var(--color-surface);
+  border: var(--border-strength) var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-md);
+  backdrop-filter: blur(var(--blur));
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-lg);
+}
+
+.description {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-sm);
+}

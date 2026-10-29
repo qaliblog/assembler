@@ -1,0 +1,16 @@
+import { Card } from '../components/Card';
+import { PageHeader } from '../components/PageHeader';
+
+export function {{componentName}}() {
+  return (
+    <section>
+      <PageHeader title="{{pageTitle}}" description="{{pageDescription}}" />
+      <Card title="About this page" description="Generated from the project specification.">
+        <p>
+          This page is a verified placeholder: it renders real layout, typography and accessibility
+          behaviour, but it has no business logic until requirements are added.
+        </p>
+      </Card>
+    </section>
+  );
+}

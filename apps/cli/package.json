@@ -1,0 +1,29 @@
+{
+  "name": "@assembler/cli",
+  "version": "0.1.0",
+  "description": "Command-line interface for the Assembler engine.",
+  "type": "module",
+  "bin": {
+    "assembler": "./dist/main.js"
+  },
+  "main": "./dist/main.js",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@assembler/component-registry": "workspace:*",
+    "@assembler/core": "workspace:*",
+    "@assembler/diagnostic-engine": "workspace:*",
+    "@assembler/environment-manager": "workspace:*",
+    "@assembler/project-assembler": "workspace:*",
+    "@assembler/project-planner": "workspace:*",
+    "@assembler/project-spec": "workspace:*",
+    "@assembler/requirement-parser": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "18.19.50",
+    "typescript": "5.6.3",
+    "vitest": "2.1.9"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "@assembler/component-registry",
+  "version": "0.1.0",
+  "description": "Verified component catalogue: manifests on disk, metadata and verification history in SQLite.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@assembler/core": "workspace:*",
+    "@assembler/environment-manager": "workspace:*",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "18.19.50",
+    "typescript": "5.6.3",
+    "vitest": "2.1.9"
+  }
+}

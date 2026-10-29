@@ -1,0 +1,30 @@
+.card {
+  background: var(--color-surface);
+  border: var(--border-strength) var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(var(--blur));
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.label {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-sm);
+}
+
+.value {
+  margin: 0;
+  font-size: var(--font-xxl);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-xs);
+}

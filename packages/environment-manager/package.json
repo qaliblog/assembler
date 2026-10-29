@@ -1,0 +1,26 @@
+{
+  "name": "@assembler/environment-manager",
+  "version": "0.1.0",
+  "description": "Cross-platform detection of runtimes, package managers and build toolchains, with explicit capabilities and installation planning.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@assembler/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "18.19.50",
+    "typescript": "5.6.3",
+    "vitest": "2.1.9"
+  }
+}

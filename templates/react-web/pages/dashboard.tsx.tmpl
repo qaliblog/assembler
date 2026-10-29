@@ -1,0 +1,23 @@
+import { MetricCard } from '../components/MetricCard';
+import { PageHeader } from '../components/PageHeader';
+import { EmptyState } from '../components/States';
+
+export function {{componentName}}() {
+  return (
+    <section>
+      <PageHeader
+        title="{{pageTitle}}"
+        description="Summary of the current workspace. Metric values appear once a data source is connected."
+      />
+      <div className="grid">
+        <MetricCard label="Total records" value="—" hint="No metrics endpoint declared" />
+        <MetricCard label="Active users" value="—" hint="No metrics endpoint declared" />
+        <MetricCard label="Last updated" value="—" hint="Waiting for data" />
+      </div>
+      <EmptyState
+        title="No live metrics yet"
+        description="This dashboard is generated from the design specification. Declare a data model and an API endpoint in the project specification to connect real values."
+      />
+    </section>
+  );
+}

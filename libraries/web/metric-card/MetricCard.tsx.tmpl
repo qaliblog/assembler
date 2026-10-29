@@ -1,0 +1,17 @@
+import styles from './MetricCard.module.css';
+
+export interface MetricCardProps {
+  readonly label: string;
+  readonly value: string;
+  readonly hint?: string;
+}
+
+export function MetricCard({ label, value, hint }: MetricCardProps) {
+  return (
+    <article className={styles.card} aria-label={label}>
+      <p className={styles.label}>{label}</p>
+      <p className={styles.value}>{value}</p>
+      {hint === undefined ? null : <p className={styles.hint}>{hint}</p>}
+    </article>
+  );
+}

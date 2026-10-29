@@ -1,0 +1,10 @@
+import type { RouteEntry } from './router';
+{{routeImports}}
+
+/**
+ * Route table generated from the project blueprint. Order matters: the first
+ * matching path wins, so parameterised routes come last.
+ */
+export const routeEntries: readonly RouteEntry[] = [
+{{routeEntries}}
+];

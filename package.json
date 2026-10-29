@@ -1,0 +1,31 @@
+{
+  "name": "assembler",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic software assembly agent: specifications, verified components, reproducible builds.",
+  "type": "module",
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "bin": {
+    "assembler": "./apps/cli/dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "clean": "tsc -b tsconfig.build.json --clean",
+    "typecheck": "tsc -b tsconfig.build.json",
+    "test": "vitest run",
+    "test:unit": "vitest run packages",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "vitest run tests/e2e",
+    "cli": "node apps/cli/dist/main.js",
+    "doctor": "node apps/cli/dist/main.js doctor",
+    "verify": "pnpm run build && vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "18.19.50",
+    "typescript": "5.6.3",
+    "vitest": "2.1.9"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

@@ -1,0 +1,54 @@
+# {{appTitle}}
+
+React + TypeScript + Vite application assembled from a validated project specification.
+
+## Requirements
+
+- Node.js 18.18 or newer
+- A supported package manager (the project was assembled with {{packageManager}})
+
+## Commands
+
+```bash
+{{installCommand}}
+{{typecheckCommand}}
+{{testCommand}}
+{{buildCommand}}
+```
+
+The production build is written to `dist/`. The development server runs on port 5173.
+
+## Structure
+
+| Path | Purpose |
+| --- | --- |
+| `src/app` | Router, layout, authentication provider, generated route table |
+| `src/components` | Reusable UI components with isolated CSS modules |
+| `src/pages` | Pages generated from the requested page archetypes |
+| `src/lib` | API client and validation (platform-independent) |
+| `src/hooks` | Reusable React hooks |
+| `src/styles` | Design tokens generated from the design system and global base styles |
+
+## Design system
+
+The `{{styleName}}` style and `{{theme}}` theme are compiled into `src/styles/tokens.css`.
+Components consume tokens only; there is no hard-coded colour or spacing in components.
+
+## What is generated and what is not
+
+This project is assembled deterministically from verified templates. Pages that were not
+requested do not exist, and features that have no verified implementation are reported as
+unsupported by the assembler instead of being approximated. Business logic (for example
+metric calculations) is not invented: the dashboard shows empty states until an API
+endpoint is declared.
+
+## Configuration
+
+Set `VITE_API_BASE_URL` to point the client at a backend (default `/api`).
+For local development against a backend on another port, set `VITE_API_PROXY`, e.g.
+`VITE_API_PROXY=http://127.0.0.1:8000`.
+
+## Provenance
+
+- Project specification: `assembler.spec.json`
+- Assembly record: `assembler.assembly.json`

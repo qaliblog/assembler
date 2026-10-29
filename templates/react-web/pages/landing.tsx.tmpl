@@ -1,0 +1,25 @@
+import { Card } from '../components/Card';
+import { PageHeader } from '../components/PageHeader';
+import { Link } from '../app/router';
+import { routeEntries } from '../app/routes';
+
+export function {{componentName}}() {
+  const destinations = routeEntries.filter((entry) => entry.path !== '/' && !entry.requiresAuth);
+
+  return (
+    <section>
+      <PageHeader title="{{pageTitle}}" description="{{pageDescription}}" />
+      {destinations.length === 0 ? (
+        <p>This application has no other public pages yet.</p>
+      ) : (
+        <div className="grid">
+          {destinations.map((entry) => (
+            <Card key={entry.path} title={entry.title} headingLevel={3}>
+              <Link to={entry.path}>Open {entry.title.toLowerCase()}</Link>
+            </Card>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}

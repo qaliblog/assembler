@@ -1,0 +1,30 @@
+{
+  "name": "@assembler/project-planner",
+  "version": "0.1.0",
+  "description": "Deterministic blueprint and file-manifest planning from a validated specification.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@assembler/component-registry": "workspace:*",
+    "@assembler/core": "workspace:*",
+    "@assembler/environment-manager": "workspace:*",
+    "@assembler/project-spec": "workspace:*",
+    "@assembler/template-engine": "workspace:*",
+    "typescript": "5.6.3"
+  },
+  "devDependencies": {
+    "@types/node": "18.19.50",
+    "vitest": "2.1.9"
+  }
+}

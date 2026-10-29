@@ -1,0 +1,35 @@
+import { useAuth } from '../app/AuthProvider';
+import { Card } from '../components/Card';
+import { PageHeader } from '../components/PageHeader';
+import { EmptyState } from '../components/States';
+
+export function {{componentName}}() {
+  const { user, status } = useAuth();
+
+  return (
+    <section>
+      <PageHeader title="{{pageTitle}}" description="Account details for the signed-in user." />
+      {user === null ? (
+        <EmptyState
+          title="Not signed in"
+          description={status === 'anonymous' ? 'Sign in to view your profile.' : 'Loading your profile…'}
+        />
+      ) : (
+        <Card title="Account" description="Values come from the authenticated session.">
+          <dl>
+            <dt>Email</dt>
+            <dd>{user.email}</dd>
+            <dt>User id</dt>
+            <dd>{user.id}</dd>
+            {user.name === undefined ? null : (
+              <>
+                <dt>Name</dt>
+                <dd>{user.name}</dd>
+              </>
+            )}
+          </dl>
+        </Card>
+      )}
+    </section>
+  );
+}

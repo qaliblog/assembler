@@ -1,0 +1,23 @@
+import { describe, expect, it } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { AuthProvider } from '../app/AuthProvider';
+import type { ApiClient } from '../lib/api';
+{{pageImports}}
+
+const client: ApiClient = {
+  async get<T>(): Promise<T> {
+    return { items: [], user: { id: 'test-user', email: 'tester@example.com' } } as unknown as T;
+  },
+  async post<T>(): Promise<T> {
+    return { token: 'test-token', user: { id: 'test-user', email: 'tester@example.com' } } as unknown as T;
+  },
+};
+
+function renderPage(page: ReactNode) {
+  return render(<AuthProvider client={client}>{page}</AuthProvider>);
+}
+
+describe('generated pages', () => {
+{{pageTestCases}}
+});

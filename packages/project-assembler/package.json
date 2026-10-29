@@ -1,0 +1,30 @@
+{
+  "name": "@assembler/project-assembler",
+  "version": "0.1.0",
+  "description": "Deterministic project assembly: staged writes, manifest validation, dependency installation, verification and publish.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@assembler/core": "workspace:*",
+    "@assembler/diagnostic-engine": "workspace:*",
+    "@assembler/environment-manager": "workspace:*",
+    "@assembler/project-planner": "workspace:*",
+    "@assembler/project-spec": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "18.19.50",
+    "typescript": "5.6.3",
+    "vitest": "2.1.9"
+  }
+}

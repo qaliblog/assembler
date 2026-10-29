@@ -1,0 +1,15 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/environment-manager" },
+    { "path": "packages/project-spec" },
+    { "path": "packages/requirement-parser" },
+    { "path": "packages/component-registry" },
+    { "path": "packages/template-engine" },
+    { "path": "packages/project-planner" },
+    { "path": "packages/project-assembler" },
+    { "path": "packages/diagnostic-engine" },
+    { "path": "apps/cli" }
+  ]
+}

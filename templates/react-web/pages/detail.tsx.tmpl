@@ -1,0 +1,48 @@
+import { useRouteParams } from '../app/router';
+import { Card } from '../components/Card';
+import { PageHeader } from '../components/PageHeader';
+import { EmptyState, ErrorState, Spinner } from '../components/States';
+import { useAsync } from '../hooks/useAsync';
+import { createApiClient } from '../lib/api';
+
+/** Endpoint derived by the planner from a declared data model, or null. */
+const endpoint: string | null = {{detailEndpointLiteral}};
+const api = createApiClient();
+
+export function {{componentName}}() {
+  const params = useRouteParams();
+  const id = params['id'] ?? '';
+  const state = useAsync<Record<string, unknown>>(async (signal) => {
+    if (endpoint === null || id === '') return {};
+    return api.get<Record<string, unknown>>(`${endpoint}/${encodeURIComponent(id)}`, { signal });
+  }, [id]);
+
+  return (
+    <section>
+      <PageHeader
+        title="{{pageTitle}}"
+        description={id === '' ? 'No record selected.' : `Record ${id}`}
+      />
+      {id === '' ? (
+        <EmptyState title="Nothing selected" description="Open a record from the list page." />
+      ) : state.status === 'loading' ? (
+        <Spinner label="Loading record" />
+      ) : state.status === 'error' ? (
+        <ErrorState message={state.error ?? 'Unable to load the record'} onRetry={state.reload} />
+      ) : state.data === null || Object.keys(state.data).length === 0 ? (
+        <EmptyState title="No data" description="The endpoint returned no fields for this record." />
+      ) : (
+        <Card title="Record">
+          <dl>
+            {Object.entries(state.data).map(([key, value]) => (
+              <div key={key}>
+                <dt>{key}</dt>
+                <dd>{value === null || value === undefined ? '—' : String(value)}</dd>
+              </div>
+            ))}
+          </dl>
+        </Card>
+      )}
+    </section>
+  );
+}

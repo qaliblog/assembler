@@ -1,0 +1,70 @@
+import { PageHeader } from '../components/PageHeader';
+import { EmptyState, ErrorState, Spinner } from '../components/States';
+import { useAsync } from '../hooks/useAsync';
+import { createApiClient } from '../lib/api';
+
+/** Endpoint derived by the planner from a declared data model, or null. */
+const endpoint: string | null = {{listEndpointLiteral}};
+const api = createApiClient();
+
+interface RecordsResponse {
+  readonly items: ReadonlyArray<Record<string, unknown>>;
+}
+
+export function {{componentName}}() {
+  const state = useAsync<RecordsResponse>(async (signal) => {
+    if (endpoint === null) return { items: [] };
+    return api.get<RecordsResponse>(endpoint, { signal });
+  }, []);
+
+  const items = state.data?.items ?? [];
+  const columns = items[0] === undefined ? [] : Object.keys(items[0]);
+
+  return (
+    <section>
+      <PageHeader
+        title="{{pageTitle}}"
+        description={endpoint === null ? 'No data model was declared for this page.' : `Loaded from ${endpoint}.`}
+      />
+      {state.status === 'loading' ? <Spinner label="Loading records" /> : null}
+      {state.status === 'error' ? (
+        <ErrorState message={state.error ?? 'Unable to load records'} onRetry={state.reload} />
+      ) : null}
+      {state.status !== 'loading' && state.status !== 'error' && items.length === 0 ? (
+        <EmptyState
+          title="No records"
+          description={
+            endpoint === null
+              ? 'Declare a data model in the project specification to generate an API-backed list.'
+              : 'The endpoint returned an empty collection.'
+          }
+        />
+      ) : null}
+      {items.length > 0 ? (
+        <div className="table-wrapper">
+          <table>
+            <caption className="visually-hidden">{{pageTitle}}</caption>
+            <thead>
+              <tr>
+                {columns.map((column) => (
+                  <th key={column} scope="col">
+                    {column}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, index) => (
+                <tr key={String(item['id'] ?? index)}>
+                  {columns.map((column) => (
+                    <td key={column}>{item[column] === null || item[column] === undefined ? '—' : String(item[column])}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}

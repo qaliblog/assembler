@@ -1,0 +1,29 @@
+{
+  "name": "metric-card",
+  "version": "1.0.0",
+  "category": "ui",
+  "description": "A compact metric tile with a label, value and optional hint, used by dashboard layouts.",
+  "license": "MIT",
+  "provenance": "internal",
+  "framework": "react",
+  "platforms": ["web"],
+  "compatibility": [{ "framework": "react", "range": ">=18 <19", "platform": "web" }],
+  "exports": [{ "name": "MetricCard", "from": "MetricCard.tsx.tmpl" }],
+  "files": [
+    { "source": "MetricCard.tsx.tmpl", "target": "src/components/MetricCard.tsx", "mode": "render", "kind": "source" },
+    { "source": "MetricCard.module.css", "target": "src/components/MetricCard.module.css", "mode": "copy", "kind": "style" },
+    { "source": "MetricCard.test.tsx", "target": "src/components/MetricCard.test.tsx", "mode": "copy", "kind": "test" }
+  ],
+  "tests": [
+    { "source": "MetricCard.test.tsx", "target": "src/components/MetricCard.test.tsx" }
+  ],
+  "dependencies": [],
+  "capabilities": [],
+  "tags": ["dashboard", "metric", "card", "stat"],
+  "lifecycle": "verified",
+  "verification": {
+    "level": "tested",
+    "method": "tests/e2e/web-assembly.test.ts (typecheck + component tests + production build of a generated project)",
+    "notes": "The component is exercised by the generated project's own Vitest suite and its rendering is part of the production bundle built during the end-to-end assembly test."
+  }
+}
