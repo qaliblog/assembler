@@ -84,17 +84,113 @@ export interface AssembleOptions {
   readonly runTests?: boolean;
   readonly runBuild?: boolean;
   readonly overwritePolicy?: 'deny' | 'backup' | 'replace';
+  /**
+   * `rename` (default) stages the project and moves it into place, so the target
+   * must be empty. `in-place` writes only the planned files into an existing
+   * directory and never touches anything else in it — this is what the
+   * interactive TUI uses when the current directory is the workspace.
+   */
+  readonly publish?: 'rename' | 'in-place';
+  /** What `in-place` publishing may do to a planned file that already exists. */
+  readonly conflictPolicy?: 'deny' | 'overwrite';
+  /** Receives real pipeline events; used for progress instead of fake spinners. */
+  readonly onStep?: (event: AssemblyStepEvent) => void;
   readonly abortSignal?: AbortSignal;
   readonly keepStagingOnFailure?: boolean;
   readonly now?: () => Date;
 }
 
-function refuseDangerousTarget(workspace: Workspace, targetDir: string): void {
+export interface AssemblyStepEvent {
+  readonly kind: CommandPlan['kind'];
+  readonly phase: 'start' | 'finish';
+  readonly ok?: boolean;
+  readonly commandLine?: string;
+  readonly durationMs?: number;
+}
+
+/** What assembling into an existing directory would do to the files already there. */
+export interface TargetInspection {
+  readonly targetDir: string;
+  readonly exists: boolean;
+  /** Planned files that are absent from the target. */
+  readonly create: readonly string[];
+  /** Planned files already present with identical content. */
+  readonly identical: readonly string[];
+  /** Planned files already present with different content. */
+  readonly conflicts: readonly string[];
+  /** Target entries the plan does not touch and will not modify. */
+  readonly untouched: readonly string[];
+  /**
+   * Assembler-owned metadata (`assembler.spec.json`, …) that differs from the
+   * plan. These are regenerated on every build and never count as user conflicts.
+   */
+  readonly regenerated: readonly string[];
+}
+
+/** Files the assembler writes about itself; safe to refresh without asking. */
+const ASSEMBLER_METADATA = /^assembler\.(spec|manifest|report)\.json$/;
+
+/**
+ * Compare a plan against an existing directory without writing anything. This is
+ * the check the interactive flow shows before asking for confirmation.
+ */
+export async function inspectTarget(
+  workspace: Workspace,
+  targetDir: string,
+  manifest: FileManifest,
+): Promise<TargetInspection> {
+  const resolvedTarget = path.resolve(targetDir);
+  const exists = await pathExists(resolvedTarget);
+  if (!exists) {
+    return {
+      targetDir: resolvedTarget,
+      exists: false,
+      create: manifest.files.map((file) => file.path),
+      identical: [],
+      conflicts: [],
+      untouched: [],
+      regenerated: [],
+    };
+  }
+  const create: string[] = [];
+  const identical: string[] = [];
+  const conflicts: string[] = [];
+  const regenerated: string[] = [];
+  for (const file of manifest.files) {
+    const absolute = path.join(resolvedTarget, file.path);
+    try {
+      const existing = await fs.readFile(absolute);
+      if (sha256(existing) === file.sha256) identical.push(file.path);
+      else if (ASSEMBLER_METADATA.test(file.path)) regenerated.push(file.path);
+      else conflicts.push(file.path);
+    } catch {
+      create.push(file.path);
+    }
+  }
+  const planned = new Set(manifest.files.map((file) => file.path));
+  const actual = await workspace.fs.listFiles(resolvedTarget);
+  const untouched = actual.filter(
+    (entry) =>
+      !planned.has(entry) &&
+      !/^(node_modules|dist|\.git|\.assembler)\//.test(entry) &&
+      !/^(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|assembler\.(manifest|report)\.json)$/.test(entry),
+  );
+  return { targetDir: resolvedTarget, exists: true, create, identical, conflicts, untouched, regenerated };
+}
+
+function refuseDangerousTarget(
+  workspace: Workspace,
+  targetDir: string,
+  mode: 'rename' | 'in-place',
+): void {
   const root = path.resolve(workspace.root);
   const target = path.resolve(targetDir);
   const relative = path.relative(root, target);
   const inside = relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative);
-  if (target === root || root.startsWith(`${target}${path.sep}`) || target === path.parse(target).root) {
+  // Writing into the workspace root itself is the whole point of in-place mode;
+  // replacing it (rename mode) or writing into any parent of it never is.
+  const replacesWorkspace = mode === 'rename' && target === root;
+  if (replacesWorkspace || root.startsWith(`${target}${path.sep}`) || target === path.parse(target).root) {
     throw new AssemblerError({
       code: 'OVERWRITE_DENIED',
       message: `Refusing to assemble into ${target}: it would replace the workspace or a parent directory.`,
@@ -126,17 +222,40 @@ export async function assembleProject(options: AssembleOptions): Promise<Assembl
   const { workspace, plan, spec } = options;
   const startedAt = (options.now?.() ?? new Date()).toISOString();
   const targetDir = path.resolve(options.targetDir);
-  refuseDangerousTarget(workspace, targetDir);
-
+  const publishMode = options.publish ?? 'rename';
+  refuseDangerousTarget(workspace, targetDir, publishMode);
   const policy = options.overwritePolicy ?? workspace.config.assembly.overwritePolicy;
   const targetExists = await pathExists(targetDir);
   const targetNonEmpty = targetExists ? !(await workspace.fs.isEmptyDirectory(targetDir)) : false;
-  if (targetNonEmpty && policy === 'deny') {
+  if (publishMode === 'rename' && targetNonEmpty && policy === 'deny') {
     throw new AssemblerError({
       code: 'OVERWRITE_DENIED',
       message: `Target directory is not empty: ${targetDir}`,
       hint: 'Choose an empty directory, or explicitly allow backup/replace.',
     });
+  }
+  if (publishMode === 'in-place' && !targetExists) {
+    throw new AssemblerError({
+      code: 'FILE_MISSING',
+      message: `In-place publishing needs an existing directory: ${targetDir}`,
+      hint: 'Create the directory first, or publish with the default rename mode.',
+    });
+  }
+  if (
+    publishMode === 'in-place' &&
+    options.conflictPolicy !== 'overwrite'
+  ) {
+    const preflight = await inspectTarget(workspace, targetDir, plan.manifest);
+    if (preflight.conflicts.length > 0) {
+      throw new AssemblerError({
+        code: 'OVERWRITE_DENIED',
+        message: `Refusing to overwrite ${preflight.conflicts.length} existing file(s): ${preflight.conflicts
+          .slice(0, 5)
+          .join(', ')}`,
+        details: { conflicts: preflight.conflicts },
+        hint: 'Review the conflicting files and approve overwriting them explicitly.',
+      });
+    }
   }
   if (plan.blueprint.blockers.length > 0) {
     throw new AssemblerError({
@@ -188,6 +307,7 @@ export async function assembleProject(options: AssembleOptions): Promise<Assembl
   };
 
   const runStep = async (kind: CommandPlan['kind'], executable: string, args: readonly string[]): Promise<boolean> => {
+    options.onStep?.({ kind, phase: 'start' });
     const result: ProcessResult = await workspace.processes.run(
       {
         executable,
@@ -202,6 +322,13 @@ export async function assembleProject(options: AssembleOptions): Promise<Assembl
       options.abortSignal,
     );
     const ok = result.spawnError === null && !result.timedOut && !result.cancelled && result.exitCode === 0;
+    options.onStep?.({
+      kind,
+      phase: 'finish',
+      ok,
+      commandLine: result.commandLine,
+      durationMs: result.durationMs,
+    });
     commands.push({
       kind,
       commandLine: result.commandLine,
@@ -406,6 +533,62 @@ export async function assembleProject(options: AssembleOptions): Promise<Assembl
 
   /* ------------------------------------------------------------- publish */
   let published = false;
+  if (publishMode === 'in-place') {
+    // Only the planned files are written; everything else in the directory is
+    // left exactly as it was. Conflicts were refused above unless the caller
+    // explicitly approved overwriting them.
+    try {
+      for (const file of plan.manifest.files) {
+        const absolute = await workspace.fs.resolveSafe(targetDir, file.path);
+        await workspace.fs.writeFileAtomic(absolute, file.content, { overwrite: true });
+      }
+      published = true;
+      // The verification ran in staging, where the dependencies live. Carry them
+      // over so the project is immediately runnable in place; if the user already
+      // has a node_modules of their own, it is left alone.
+      if (verification.dependenciesInstalled) {
+        const stagedModules = path.join(stagingDir, 'node_modules');
+        const targetModules = path.join(targetDir, 'node_modules');
+        if ((await pathExists(stagedModules)) && !(await pathExists(targetModules))) {
+          await fs.cp(stagedModules, targetModules, { recursive: true, verbatimSymlinks: true });
+          notes.push('Dependencies were carried over from the staging directory (node_modules).');
+        } else if (await pathExists(targetModules)) {
+          notes.push('An existing node_modules was left untouched; run the package manager if it is stale.');
+        }
+      }
+      if (verification.built) {
+        const stagedDist = path.join(stagingDir, 'dist');
+        const targetDist = path.join(targetDir, 'dist');
+        if ((await pathExists(stagedDist)) && !(await pathExists(targetDist))) {
+          await fs.cp(stagedDist, targetDist, { recursive: true, verbatimSymlinks: true });
+          notes.push('Production bundle copied from the staging directory (dist/).');
+        }
+      }
+    } catch (error) {
+      failures.push({
+        summary: `Publishing failed: ${error instanceof Error ? error.message : String(error)}`,
+        category: 'environment',
+        diagnostics: [],
+        command: '',
+        exitCode: null,
+        timedOut: false,
+        stderrTail: '',
+      });
+      notes.push('The staged project was preserved; the target directory was not modified further.');
+      await writeMetadata(stagingDir, report).catch(() => undefined);
+      return { ...report, status: 'failed', notes };
+    }
+    const inPlaceFinal: AssemblyReport = { ...report, published: true, notes };
+    await writeMetadata(targetDir, inPlaceFinal).catch((error: unknown) => {
+      workspace.logger.warn('could not write assembly metadata', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+    await workspace.fs.remove(stagingDir).catch(() => undefined);
+    notes.push('Staging directory removed after in-place publish.');
+    recordAssembly(workspace, spec, plan, inPlaceFinal);
+    return inPlaceFinal;
+  }
   try {
     if (await pathExists(targetDir)) {
       if (policy === 'backup') {

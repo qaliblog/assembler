@@ -8,9 +8,13 @@
  *   2  invalid usage, specification or unresolved plan blockers
  *   3  a required environment capability is unsatisfied
  *   4  the requested feature is not implemented
+ *
+ * With no command, `assembler` opens the interactive interface for the current
+ * directory (or the one given by --workspace).
  */
+import path from 'node:path';
 import { AssemblerError, isAssemblerError } from '@assembler/core';
-import { flagBoolean, parseArgs, type CommandSpec } from './args.js';
+import { flagBoolean, flagString, parseArgs, type CommandSpec } from './args.js';
 import {
   EXIT,
   adopt,
@@ -29,6 +33,8 @@ import {
   type CommandContext,
 } from './commands.js';
 import { reportError } from './output.js';
+import { openProjectWorkspace, resolveAssetsRoot } from './runtime.js';
+import { hasInteractiveTerminal, NON_TTY_GUIDANCE, runPrompt, runTui, type TuiRunOptions } from './tui/index.js';
 
 interface CommandDefinition extends CommandSpec {
   readonly run: (context: CommandContext) => Promise<number>;
@@ -39,7 +45,7 @@ const COMMANDS: readonly CommandDefinition[] = [
     name: 'init',
     usage: 'assembler init [--root <dir>] [--json]',
     description: 'Create the workspace configuration and data directory.',
-    valueFlags: ['root'],
+    valueFlags: ['root', 'workspace'],
     booleanFlags: ['json', 'help'],
     run: runInit,
   },
@@ -47,7 +53,7 @@ const COMMANDS: readonly CommandDefinition[] = [
     name: 'interpret',
     usage: 'assembler interpret "<request>" [--out <file>] [--json]',
     description: 'Convert a natural-language request into a validated project specification.',
-    valueFlags: ['out', 'root'],
+    valueFlags: ['out', 'root', 'workspace'],
     booleanFlags: ['json', 'help'],
     run: runInterpret,
   },
@@ -55,15 +61,16 @@ const COMMANDS: readonly CommandDefinition[] = [
     name: 'plan',
     usage: 'assembler plan <spec.json> [--out <blueprint.json>] [--json]',
     description: 'Build a complete, inspectable blueprint without writing project files.',
-    valueFlags: ['out', 'root'],
+    valueFlags: ['out', 'root', 'workspace'],
     booleanFlags: ['json', 'help'],
     run: planOnly,
   },
   {
     name: 'build',
-    usage: 'assembler build <spec.json> [--target <dir>] [--overwrite deny|backup|replace] [--no-install] [--no-tests] [--json]',
+    usage:
+      'assembler build <spec.json> [--target <dir>] [--overwrite deny|backup|replace] [--no-install] [--no-tests] [--json]',
     description: 'Assemble, install, typecheck, test, build and publish a project.',
-    valueFlags: ['target', 'overwrite', 'root'],
+    valueFlags: ['target', 'overwrite', 'root', 'workspace'],
     booleanFlags: ['json', 'no-install', 'no-tests', 'no-typecheck', 'no-build', 'help'],
     run: buildProject,
   },
@@ -71,7 +78,7 @@ const COMMANDS: readonly CommandDefinition[] = [
     name: 'analyze',
     usage: 'assembler analyze [<dir>] [--json]',
     description: 'Inventory an existing project: targets, dependencies, imports and tests.',
-    valueFlags: [],
+    valueFlags: ['workspace'],
     booleanFlags: ['json', 'help'],
     run: analyze,
   },
@@ -79,7 +86,7 @@ const COMMANDS: readonly CommandDefinition[] = [
     name: 'inspect',
     usage: 'assembler inspect <dir> [--json]',
     description: 'Verify a generated project against its recorded manifest.',
-    valueFlags: ['root'],
+    valueFlags: ['root', 'workspace'],
     booleanFlags: ['json', 'help'],
     run: inspect,
   },
@@ -87,7 +94,7 @@ const COMMANDS: readonly CommandDefinition[] = [
     name: 'doctor',
     usage: 'assembler doctor [--json]',
     description: 'Detect runtimes, package managers, SDKs and report capability status.',
-    valueFlags: ['root'],
+    valueFlags: ['root', 'workspace'],
     booleanFlags: ['json', 'help'],
     run: doctor,
   },
@@ -95,7 +102,7 @@ const COMMANDS: readonly CommandDefinition[] = [
     name: 'registry',
     usage: 'assembler registry <search|inspect|add|verify|deprecate|list> [args]',
     description: 'Manage the verified component registry.',
-    valueFlags: ['version', 'replaced-by', 'root'],
+    valueFlags: ['version', 'replaced-by', 'root', 'workspace'],
     booleanFlags: ['json', 'help'],
     run: registry,
   },
@@ -103,7 +110,7 @@ const COMMANDS: readonly CommandDefinition[] = [
     name: 'history',
     usage: 'assembler history [--limit <n>] [--json]',
     description: 'Show recorded assemblies and their outcomes.',
-    valueFlags: ['limit', 'root'],
+    valueFlags: ['limit', 'root', 'workspace'],
     booleanFlags: ['json', 'help'],
     run: history,
   },
@@ -111,7 +118,7 @@ const COMMANDS: readonly CommandDefinition[] = [
     name: 'test',
     usage: 'assembler test <dir> [--json]',
     description: "Run an existing project's test script with the detected package manager.",
-    valueFlags: ['root'],
+    valueFlags: ['root', 'workspace'],
     booleanFlags: ['json', 'help'],
     run: testProject,
   },
@@ -119,7 +126,7 @@ const COMMANDS: readonly CommandDefinition[] = [
     name: 'debug',
     usage: 'assembler debug [<dir>] [--json]',
     description: 'Combine project analysis, environment status and recorded diagnostics.',
-    valueFlags: ['root'],
+    valueFlags: ['root', 'workspace'],
     booleanFlags: ['json', 'help'],
     run: debug,
   },
@@ -127,7 +134,7 @@ const COMMANDS: readonly CommandDefinition[] = [
     name: 'adopt',
     usage: 'assembler adopt [<dir>] [--json]',
     description: 'Analysis-only in this milestone: adoption is not implemented.',
-    valueFlags: [],
+    valueFlags: ['workspace'],
     booleanFlags: ['json', 'help'],
     run: adopt,
   },
@@ -135,7 +142,7 @@ const COMMANDS: readonly CommandDefinition[] = [
     name: 'repair',
     usage: 'assembler repair <dir> [--json]',
     description: 'Not implemented in this milestone.',
-    valueFlags: [],
+    valueFlags: ['workspace'],
     booleanFlags: ['json', 'dry-run', 'help'],
     run: (context) =>
       unimplemented(
@@ -148,7 +155,7 @@ const COMMANDS: readonly CommandDefinition[] = [
     name: 'docs',
     usage: 'assembler docs <query> [--json]',
     description: 'Not implemented in this milestone.',
-    valueFlags: [],
+    valueFlags: ['workspace'],
     booleanFlags: ['json', 'help'],
     run: (context) =>
       unimplemented(
@@ -159,26 +166,117 @@ const COMMANDS: readonly CommandDefinition[] = [
   },
 ];
 
+const LAUNCH_VALUE_FLAGS = ['workspace', 'prompt', 'root'] as const;
+const LAUNCH_BOOLEAN_FLAGS = [
+  'json',
+  'no-install',
+  'no-tests',
+  'no-typecheck',
+  'no-build',
+  'yes',
+  'non-interactive',
+  'help',
+] as const;
+
 function helpText(): string {
   const lines: string[] = [];
   lines.push('assembler — deterministic software assembly');
   lines.push('');
-  lines.push('Usage: assembler <command> [options]');
+  lines.push('Usage: assembler                      open the interactive interface here');
+  lines.push('       assembler --prompt "<request>"  build without a terminal');
+  lines.push('       assembler <command> [options]   run a single command');
   lines.push('');
   for (const command of COMMANDS) {
     lines.push(`  ${command.usage}`);
     lines.push(`      ${command.description}`);
   }
   lines.push('');
-  lines.push('Global options: --json (structured output), --root <dir> (assets root)');
+  lines.push('Interactive: with no command, assembler opens a TUI for the current directory.');
+  lines.push('Slash commands inside the TUI: /help /workspace /plan /inspect /doctor /history /analyze /clear /quit');
+  lines.push('');
+  lines.push('Global options: --workspace <dir> (project directory), --root <dir> (assets root), --json');
   lines.push('');
   lines.push('Exit codes: 0 ok, 1 operation failed, 2 usage/spec/blockers, 3 capability unsatisfied, 4 not implemented');
   return lines.join('\n');
 }
 
+function launchHelp(): string {
+  return [
+    'Usage: assembler [options] [request]',
+    '',
+    '  --workspace <dir>   project directory to build into (default: current directory)',
+    '  --prompt <text>     run one request without the interactive interface',
+    '  --yes               accept overwriting conflicting files without asking',
+    '  --no-install        write files without installing dependencies',
+    '  --no-typecheck      skip type checking',
+    '  --no-tests          skip the generated tests',
+    '  --no-build          skip the production build',
+    '  --non-interactive   never wait for input (requires --prompt)',
+    '  --json              machine-readable output (with --prompt)',
+    '',
+    'Examples:',
+    '  assembler',
+    '  assembler "Build a responsive blog with React and TypeScript"',
+    '  assembler --workspace ./my-blog --prompt "Create a React dashboard"',
+  ].join('\n');
+}
+
+/** Open the workspace for the current directory and run the interactive UI. */
+async function launch(argv: readonly string[]): Promise<number> {
+  const args = parseArgs(['assembler', ...argv], [...LAUNCH_VALUE_FLAGS], [...LAUNCH_BOOLEAN_FLAGS]);
+  if (flagBoolean(args.flags, 'help')) {
+    process.stdout.write(`${launchHelp()}\n`);
+    return EXIT.ok;
+  }
+  const cwd = process.cwd();
+  const prompt = flagString(args.flags, 'prompt') ?? (args.positionals.join(' ').trim() || undefined);
+  if (flagBoolean(args.flags, 'non-interactive') && prompt === undefined) {
+    throw new AssemblerError({
+      code: 'USAGE_ERROR',
+      message: '--non-interactive requires --prompt "<request>"',
+      hint: 'Example: assembler --non-interactive --prompt "Create a React dashboard"',
+    });
+  }
+  const assetsRoot = await resolveAssetsRoot(flagString(args.flags, 'root'), cwd);
+  const projectDir = path.resolve(cwd, flagString(args.flags, 'workspace') ?? '.');
+
+  // Without a terminal there is nothing to draw: explain before touching the
+  // user's directory, so a stray invocation in a script leaves no state behind.
+  if (prompt === undefined && !hasInteractiveTerminal()) {
+    process.stdout.write(`${NON_TTY_GUIDANCE}\n`);
+    return EXIT.usage;
+  }
+
+  const workspace = await openProjectWorkspace({
+    assetsRoot,
+    projectDir,
+    json: flagBoolean(args.flags, 'json'),
+  });
+
+  const options: TuiRunOptions = {
+    ...(flagBoolean(args.flags, 'no-install') ? { install: false } : {}),
+    ...(flagBoolean(args.flags, 'no-typecheck') ? { typecheck: false } : {}),
+    ...(flagBoolean(args.flags, 'no-tests') ? { tests: false } : {}),
+    ...(flagBoolean(args.flags, 'no-build') ? { build: false } : {}),
+    ...(flagBoolean(args.flags, 'yes') ? { autoConfirm: true } : {}),
+  };
+
+  interactiveSession = true;
+  if (prompt !== undefined) {
+    if (flagBoolean(args.flags, 'json')) {
+      // The plain renderer is the human format; JSON runs print the same lines on
+      // stderr so stdout stays free for the final report file.
+      return runPrompt(workspace, prompt, { ...options, output: process.stderr });
+    }
+    return runPrompt(workspace, prompt, options);
+  }
+  return runTui(workspace, options);
+}
+
 async function main(argv: readonly string[]): Promise<number> {
   const [commandName] = argv;
-  if (commandName === undefined || commandName === '--help' || commandName === '-h' || commandName === 'help') {
+  if (commandName === undefined) return launch([]);
+  if (commandName === '--help' || commandName === '-h' || commandName === 'help') {
     process.stdout.write(`${helpText()}\n`);
     return EXIT.ok;
   }
@@ -189,6 +287,7 @@ async function main(argv: readonly string[]): Promise<number> {
 
   const definition = COMMANDS.find((command) => command.name === commandName);
   if (definition === undefined) {
+    if (commandName.startsWith('-')) return launch(argv);
     throw new AssemblerError({
       code: 'USAGE_ERROR',
       message: `Unknown command: ${commandName}`,
@@ -203,6 +302,18 @@ async function main(argv: readonly string[]): Promise<number> {
   }
   return definition.run({ args: { ...args, command: definition.name }, cwd: process.cwd() });
 }
+
+/**
+ * While the interactive interface is running it owns ctrl+c. Before that, a
+ * SIGINT would otherwise kill Node mid-startup; leave a clean prompt and the
+ * conventional 130 status instead.
+ */
+let interactiveSession = false;
+process.on('SIGINT', () => {
+  if (interactiveSession) return;
+  process.stdout.write('\n');
+  process.exit(130);
+});
 
 /** Map an error's stable code onto the documented exit-code contract. */
 function exitCodeFor(error: unknown): number {

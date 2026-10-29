@@ -7,9 +7,24 @@
   "engines": {
     "node": ">=18.18.0"
   },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "bin": {
-    "assembler": "./apps/cli/dist/main.js"
+    "assembler": "./bin/assembler.js"
   },
+  "files": [
+    "bin/",
+    "apps/cli/dist/",
+    "packages/*/dist/",
+    "packages/*/package.json",
+    "templates/",
+    "knowledge/",
+    "libraries/",
+    "docs/",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -b tsconfig.build.json",
     "clean": "tsc -b tsconfig.build.json --clean",
@@ -18,8 +33,9 @@
     "test:unit": "vitest run packages",
     "test:integration": "vitest run tests/integration",
     "test:e2e": "vitest run tests/e2e",
-    "cli": "node apps/cli/dist/main.js",
-    "doctor": "node apps/cli/dist/main.js doctor",
+    "cli": "node bin/assembler.js",
+    "start": "node bin/assembler.js",
+    "doctor": "node bin/assembler.js doctor",
     "verify": "pnpm run build && vitest run"
   },
   "devDependencies": {

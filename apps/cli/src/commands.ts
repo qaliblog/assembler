@@ -4,12 +4,7 @@
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import {
-  AssemblerError,
-  FileSystemService,
-  createWorkspace,
-  type Workspace,
-} from '@assembler/core';
+import { AssemblerError, FileSystemService, type Workspace } from '@assembler/core';
 import { ComponentRegistry } from '@assembler/component-registry';
 import {
   scanEnvironment,
@@ -27,6 +22,7 @@ import { interpretRequirement } from '@assembler/requirement-parser';
 import { analyzeProject, summarizeInventory } from './analyze.js';
 import { flagBoolean, flagString, type ParsedArgs } from './args.js';
 import { createOutput } from './output.js';
+import { openProjectWorkspace, resolveAssetsRoot } from './runtime.js';
 
 export const EXIT = {
   ok: 0,
@@ -50,24 +46,17 @@ async function exists(target: string): Promise<boolean> {
   }
 }
 
-/** Find the repository root that provides templates/knowledge/libraries. */
-async function resolveAssetsRoot(explicit: string | undefined, cwd: string): Promise<string> {
-  if (explicit !== undefined) return path.resolve(cwd, explicit);
-  let directory = cwd;
-  for (let depth = 0; depth < 6; depth += 1) {
-    if (await exists(path.join(directory, 'templates', 'react-web', 'template.json'))) return directory;
-    const parent = path.dirname(directory);
-    if (parent === directory) break;
-    directory = parent;
-  }
-  return cwd;
+/** The directory the user is working in; `--workspace` overrides the process cwd. */
+export function resolveProjectDir(context: CommandContext): string {
+  return path.resolve(context.cwd, flagString(context.args.flags, 'workspace') ?? '.');
 }
 
 async function openWorkspace(context: CommandContext, json: boolean): Promise<Workspace> {
-  const root = await resolveAssetsRoot(flagString(context.args.flags, 'root'), context.cwd);
-  return createWorkspace({
-    root,
-    overrides: { logLevel: json ? 'error' : 'warn' },
+  const assetsRoot = await resolveAssetsRoot(flagString(context.args.flags, 'root'), context.cwd);
+  return openProjectWorkspace({
+    assetsRoot,
+    projectDir: resolveProjectDir(context),
+    json,
   });
 }
 
