@@ -17,6 +17,7 @@
     "@assembler/diagnostic-engine": "workspace:*",
     "@assembler/environment-manager": "workspace:*",
     "@assembler/project-assembler": "workspace:*",
+    "@assembler/project-modifier": "workspace:*",
     "@assembler/project-planner": "workspace:*",
     "@assembler/project-spec": "workspace:*",
     "@assembler/requirement-parser": "workspace:*"

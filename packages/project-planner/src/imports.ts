@@ -98,18 +98,31 @@ export function analyzeModule(fileName: string, content: string): ImportAnalysis
 
 const RESOLUTION_SUFFIXES = ['', '.ts', '.tsx', '.css', '.json', '/index.ts', '/index.tsx'];
 
-/** Resolve a relative import against the set of declared project paths. */
+/**
+ * Resolve a relative import against the set of declared project paths.
+ *
+ * Node's ESM resolution requires a `.js` extension in source that compiles from
+ * `.ts`, so `./router.js` must resolve to `src/router/router.ts`; the generated
+ * Node.js target depends on that.
+ */
 export function resolveRelativeImport(
   fromPath: string,
   specifier: string,
   projectFiles: ReadonlySet<string>,
 ): string | null {
   const base = path.posix.normalize(path.posix.join(path.posix.dirname(fromPath), specifier));
-  for (const suffix of RESOLUTION_SUFFIXES) {
-    const candidate = `${base}${suffix}`;
-    if (projectFiles.has(candidate)) return candidate;
-    if (suffix === '' && projectFiles.has(`${candidate}/index.ts`)) return `${candidate}/index.ts`;
-    if (suffix === '' && projectFiles.has(`${candidate}/index.tsx`)) return `${candidate}/index.tsx`;
+  const bases = [base];
+  if (/\.(?:js|mjs|cjs)$/.test(base)) {
+    const withoutExtension = base.replace(/\.(?:js|mjs|cjs)$/, '');
+    bases.push(`${withoutExtension}.ts`, `${withoutExtension}.tsx`);
+  }
+  for (const candidateBase of bases) {
+    for (const suffix of RESOLUTION_SUFFIXES) {
+      const candidate = `${candidateBase}${suffix}`;
+      if (projectFiles.has(candidate)) return candidate;
+      if (suffix === '' && projectFiles.has(`${candidate}/index.ts`)) return `${candidate}/index.ts`;
+      if (suffix === '' && projectFiles.has(`${candidate}/index.tsx`)) return `${candidate}/index.tsx`;
+    }
   }
   return null;
 }

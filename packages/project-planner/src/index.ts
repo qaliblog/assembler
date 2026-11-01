@@ -50,6 +50,7 @@ export { computeDesign, relativeLuminance, type ComputedDesign, type DesignToken
 export {
   loadKnowledge,
   type DesignKnowledge,
+  type DesignPreset,
   type LoadedKnowledge,
   type StyleTokens,
   type ThemeTokens,

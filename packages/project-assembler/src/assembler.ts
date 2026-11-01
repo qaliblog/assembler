@@ -26,6 +26,7 @@ import {
   type Blueprint,
   type CommandPlan,
   type FileManifest,
+  type PlannedFile,
 } from '@assembler/project-planner';
 import type { ProjectSpec } from '@assembler/project-spec';
 
@@ -95,6 +96,8 @@ export interface AssembleOptions {
   readonly conflictPolicy?: 'deny' | 'overwrite';
   /** Receives real pipeline events; used for progress instead of fake spinners. */
   readonly onStep?: (event: AssemblyStepEvent) => void;
+  /** Receives each file as it is written, so progress is visible while it happens. */
+  readonly onFile?: (event: AssemblyFileEvent) => void;
   readonly abortSignal?: AbortSignal;
   readonly keepStagingOnFailure?: boolean;
   readonly now?: () => Date;
@@ -106,6 +109,18 @@ export interface AssemblyStepEvent {
   readonly ok?: boolean;
   readonly commandLine?: string;
   readonly durationMs?: number;
+}
+
+/** Emitted for every planned file as soon as it is on disk. */
+export interface AssemblyFileEvent {
+  readonly path: string;
+  readonly kind: PlannedFile['kind'];
+  readonly bytes: number;
+  /** Zero-based position in the manifest. */
+  readonly index: number;
+  readonly total: number;
+  /** True when the file was also written into the target (in-place) directory. */
+  readonly writtenToWorkspace: boolean;
 }
 
 /** What assembling into an existing directory would do to the files already there. */
@@ -270,6 +285,11 @@ export async function assembleProject(options: AssembleOptions): Promise<Assembl
 
   const stagingDir = path.join(workspace.paths.stagingDir, `${spec.slug}-${randomId('build')}`);
   await workspace.fs.ensureDir(stagingDir);
+  // In-place builds write every planned file into the workspace as it is
+  // generated instead of holding the project in staging until the end. A failed
+  // install or test run therefore keeps the code instead of discarding it.
+  const publishInPlace = publishMode === 'in-place';
+  let writtenFiles = 0;
 
   const commands: CommandReport[] = [];
   const failures: NormalizedFailure[] = [];
@@ -357,10 +377,30 @@ export async function assembleProject(options: AssembleOptions): Promise<Assembl
   };
 
   try {
-    for (const file of plan.manifest.files) {
+    const plannedFiles = plan.manifest.files;
+    for (const [index, file] of plannedFiles.entries()) {
+      if (options.abortSignal?.aborted === true) {
+        throw new AssemblerError({
+          code: 'CANCELLED',
+          message: `Assembly cancelled after ${writtenFiles} of ${plannedFiles.length} file(s)`,
+        });
+      }
       await writeFile(file.path, file.content);
+      if (publishInPlace) {
+        const absolute = await workspace.fs.resolveSafe(targetDir, file.path);
+        await workspace.fs.writeFileAtomic(absolute, file.content, { overwrite: true });
+      }
+      writtenFiles += 1;
+      options.onFile?.({
+        path: file.path,
+        kind: file.kind,
+        bytes: Buffer.byteLength(file.content, 'utf8'),
+        index,
+        total: plannedFiles.length,
+        writtenToWorkspace: publishInPlace,
+      });
     }
-    verification.filesWritten = true;
+    verification.filesWritten = writtenFiles === plannedFiles.length;
 
     reconciliation = await reconcileManifest(stagingDir, plan.manifest, workspace.fs);
     if (!reconciliation.ok) {
@@ -480,10 +520,10 @@ export async function assembleProject(options: AssembleOptions): Promise<Assembl
     slug: spec.slug,
     targetDir,
     stagingDir,
-    published: false,
+    published: publishInPlace && writtenFiles > 0,
     blueprintFingerprint: blueprintFingerprint(plan.blueprint),
     specHash: plan.blueprint.project.specHash,
-    filesWritten: status === 'built' ? plan.manifest.files.length : 0,
+    filesWritten: writtenFiles,
     components: plan.blueprint.components,
     verification,
     commands,
@@ -527,21 +567,22 @@ export async function assembleProject(options: AssembleOptions): Promise<Assembl
   };
 
   if (status !== 'built') {
+    if (publishInPlace && writtenFiles > 0) {
+      notes.push(
+        `${writtenFiles} generated file(s) were written to ${targetDir} and kept. Fix the failing step and run it there; completed work is never discarded.`,
+      );
+    }
     await writeMetadata(stagingDir, report).catch(() => undefined);
-    return report;
+    return { ...report, published: publishInPlace && writtenFiles > 0, notes };
   }
 
   /* ------------------------------------------------------------- publish */
   let published = false;
   if (publishMode === 'in-place') {
-    // Only the planned files are written; everything else in the directory is
-    // left exactly as it was. Conflicts were refused above unless the caller
-    // explicitly approved overwriting them.
+    // Planned files already landed in the target while they were generated.
+    // Everything else in the directory is left exactly as it was. Conflicts
+    // were refused above unless the caller explicitly approved overwriting.
     try {
-      for (const file of plan.manifest.files) {
-        const absolute = await workspace.fs.resolveSafe(targetDir, file.path);
-        await workspace.fs.writeFileAtomic(absolute, file.content, { overwrite: true });
-      }
       published = true;
       // The verification ran in staging, where the dependencies live. Carry them
       // over so the project is immediately runnable in place; if the user already

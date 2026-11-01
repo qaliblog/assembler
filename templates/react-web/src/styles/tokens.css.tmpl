@@ -1,55 +1,10 @@
 /*
- * Design tokens for the "{{styleName}}" style, "{{theme}}" theme.
- * Generated deterministically from knowledge/design.json — edit the knowledge
- * file, not this CSS, if you want to change the design system.
+ * Design tokens for the "{{styleName}}" style, "{{presetLabel}}" preset and
+ * "{{theme}}" theme. Generated deterministically from knowledge/design.json by
+ * composing code snippets — edit the knowledge file, not this CSS, if you want
+ * to change the design system.
  */
 :root {
-  color-scheme: {{theme}};
-
-  --color-bg: {{colorBg}};
-  --color-bg-gradient: {{colorBgGradient}};
-  --color-text: {{colorText}};
-  --color-text-muted: {{colorTextMuted}};
-  --color-border: {{colorBorder}};
-  --color-surface: {{colorSurface}};
-  --color-hover: {{colorHover}};
-  --color-input: {{colorInput}};
-  --color-primary: {{colorPrimary}};
-  --color-primary-hover: {{colorPrimaryHover}};
-  --color-primary-contrast: {{colorPrimaryContrast}};
-  --color-focus: {{colorFocus}};
-  --color-danger: {{colorDanger}};
-  --color-success: {{colorSuccess}};
-
-  --radius-sm: {{radiusSm}};
-  --radius-md: {{radiusMd}};
-  --radius-lg: {{radiusLg}};
-
-  --space-xs: {{spaceXs}};
-  --space-sm: {{spaceSm}};
-  --space-md: {{spaceMd}};
-  --space-lg: {{spaceLg}};
-  --space-xl: {{spaceXl}};
-
-  --shadow-sm: {{shadowSm}};
-  --shadow-md: {{shadowMd}};
-  --blur: {{blur}};
-  --border-strength: {{borderStrength}};
-
-  --font-sans: {{fontSans}};
-  --font-xs: {{fontXs}};
-  --font-sm: {{fontSm}};
-  --font-md: {{fontMd}};
-  --font-lg: {{fontLg}};
-  --font-xl: {{fontXl}};
-  --font-xxl: {{fontXxl}};
-
-  --transition: {{transition}};
-
-  --header-height: {{headerHeight}};
-  --sidebar-width: {{sidebarWidth}};
-  --content-max-width: {{contentMaxWidth}};
-
-  --z-header: 20;
-  --z-modal: 60;
+{{> color-tokens.css}}
+{{> scale-tokens.css}}
 }

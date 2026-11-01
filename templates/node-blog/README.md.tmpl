@@ -1,0 +1,81 @@
+# {{appTitle}}
+
+{{siteDescription}}
+
+A server-rendered publication built with Node.js and TypeScript. No runtime
+dependencies, no client-side JavaScript, no third-party scripts.
+
+## Run it
+
+```bash
+{{installCommand}}
+{{testCommand}}
+{{buildCommand}}
+{{startCommand}}
+```
+
+The server listens on `PORT` (default `3000`) and `HOST` (default `0.0.0.0`).
+`LOG_LEVEL` accepts `debug`, `info`, `warn` or `error`.
+
+## Routes
+
+| Method | Path | Response |
+| --- | --- | --- |
+| GET/HEAD | `/` | Home page with the featured article |
+| GET/HEAD | `/posts` | Complete archive |
+| GET/HEAD | `/posts/:slug` | Article, or 404 |
+| GET/HEAD | `/categories` | Category index |
+| GET/HEAD | `/categories/:category` | Posts in a category, or 404 |
+| GET/HEAD | `/tags/:tag` | Posts carrying a tag, or 404 |
+| GET/HEAD | `/search?q=` | Search results |
+| GET/HEAD | `/about` | About the publication |
+| GET/HEAD | `/contact` | Contact details |
+| GET/HEAD | `/feed.xml` | RSS 2.0 feed |
+| GET/HEAD | `/api/health` | JSON health and content counts |
+| GET/HEAD | `/api/posts` | JSON post summaries |
+| GET/HEAD | `/api/posts/:slug` | JSON post, or 404 |
+| GET/HEAD | `/assets/site.css` | Generated stylesheet |
+| GET/HEAD | `/assets/favicon.svg` | Generated favicon |
+
+Other methods on a known path return `405` with an `Allow` header. Unknown paths
+return a real `404` page. `/blog`, `/blog/:slug`, `/post/:slug`, `/category/:slug`
+and `/tag/:slug` permanently redirect to their canonical routes.
+
+## Structure
+
+```
+src/
+  app.ts            request pipeline: headers, redirects, dispatch, errors
+  server.ts         executable entry point and graceful shutdown
+  config.ts         site identity, contact address, PORT/HOST/LOG_LEVEL
+  router/           route table and the framework-free router
+  routes/           page and JSON controllers
+  services/         content repository (search, taxonomy, related posts)
+  content/          typed articles
+  views/            HTML composition, RSS and the generated stylesheet
+  middleware/       security headers, request logging, error handling
+  lib/              escaping, response helpers, logging, slugs
+test/
+  router.test.ts    matching, canonical paths, method handling, conflicts
+  routes.test.ts    every route, method, redirect, asset, API and error path
+  links.test.ts     crawls every rendered page and fetches every internal link
+  content.test.ts   sorting, search, taxonomy, related posts
+```
+
+## Editing
+
+- Articles live in `src/content/posts.ts` and are typed. Use the block types in
+  `src/domain/post.ts`; views escape every string.
+- Site title, tagline and contact address live in `src/config.ts`. The generated
+  contact address uses the reserved `.example` domain — replace it before you
+  publish.
+- The visual system comes from CSS custom properties in `src/views/styles.ts`.
+  They were generated from the project's design tokens and are safe to edit.
+- Adding a page means one view, one handler, one route registration and one
+  route test. Adding a URL that is not registered is a 404 by design.
+
+## Verification
+
+`{{typecheckCommand}}` typechecks sources and tests. `{{testCommand}}` runs the
+route suite against the real HTTP pipeline on an ephemeral port. `{{buildCommand}}`
+emits `dist/`. Nothing is claimed as working that the tests do not exercise.

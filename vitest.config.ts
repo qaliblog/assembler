@@ -20,6 +20,7 @@ export default defineConfig({
       '@assembler/template-engine': pkg('template-engine'),
       '@assembler/project-planner': pkg('project-planner'),
       '@assembler/project-assembler': pkg('project-assembler'),
+      '@assembler/project-modifier': pkg('project-modifier'),
       '@assembler/diagnostic-engine': pkg('diagnostic-engine'),
     },
   },

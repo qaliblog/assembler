@@ -15,6 +15,7 @@
     { "path": "../../packages/component-registry" },
     { "path": "../../packages/project-planner" },
     { "path": "../../packages/project-assembler" },
+    { "path": "../../packages/project-modifier" },
     { "path": "../../packages/diagnostic-engine" }
   ]
 }

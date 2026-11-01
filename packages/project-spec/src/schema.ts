@@ -25,6 +25,7 @@ export const requirementCategorySchema = z.enum([
   'component',
   'design.style',
   'design.theme',
+  'design.preset',
   'design.color',
   'design.layout',
   'state-management',
@@ -148,8 +149,13 @@ export const applicationSchema = z.object({
 export type ApplicationSpec = z.infer<typeof applicationSchema>;
 
 export const designSchema = z.object({
-  style: z.enum(['glassmorphism', 'neumorphism', 'minimal', 'material', 'default']),
+  style: z.enum(['glassmorphism', 'neumorphism', 'minimal', 'material', 'editorial', 'default']),
   theme: z.enum(['dark', 'light', 'system']),
+  /**
+   * Named colour preset from `knowledge/design.json` (`nord`, `dracula`, …).
+   * `default` means "use the style's recommended palette for the theme".
+   */
+  preset: z.string().regex(/^[a-z0-9][a-z0-9-]*$/).default('default'),
   palette: z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/)).default([]),
   layout: z.enum(['dashboard', 'landing', 'mobile-tabs', 'default']),
   responsive: z.boolean().default(true),

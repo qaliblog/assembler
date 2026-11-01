@@ -8,6 +8,8 @@
     { "name": "appTitle", "description": "Human-readable application title", "example": "Demo Dashboard" },
     { "name": "projectName", "description": "Project name used in copy", "example": "demo-dashboard" },
     { "name": "theme", "description": "Active theme (dark/light)", "example": "dark" },
+    { "name": "presetName", "description": "Named colour preset id from knowledge/design.json", "example": "nord" },
+    { "name": "presetLabel", "description": "Human-readable preset label", "example": "Nord" },
     { "name": "layout", "description": "Layout variant", "example": "dashboard" },
     { "name": "apiBaseUrl", "description": "Base URL for API calls", "example": "/api" }
   ],

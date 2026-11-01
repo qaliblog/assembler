@@ -11,6 +11,9 @@ import type { DesignKnowledge } from './knowledge.js';
 export interface DesignTokens {
   readonly styleName: string;
   readonly theme: string;
+  /** Named colour preset applied on top of the style, or `default`. */
+  readonly presetName: string;
+  readonly presetLabel: string;
   readonly colorBg: string;
   readonly colorBgGradient: string;
   readonly colorText: string;
@@ -38,6 +41,7 @@ export interface DesignTokens {
   readonly blur: string;
   readonly borderStrength: string;
   readonly fontSans: string;
+  readonly fontSerif: string;
   readonly fontXs: string;
   readonly fontSm: string;
   readonly fontMd: string;
@@ -96,6 +100,7 @@ export interface ComputedDesign {
 }
 
 const STYLE_SEARCH_TAGS: Readonly<Record<string, readonly string[]>> = {
+  editorial: ['editorial', 'serif', 'publication'],
   glassmorphism: ['glass', 'translucent', 'blur'],
   neumorphism: ['neumorphic', 'soft'],
   minimal: ['minimal', 'clean'],
@@ -111,21 +116,38 @@ export function computeDesign(design: DesignSpec, knowledge: DesignKnowledge): C
     throw new Error('Design knowledge is missing a theme or style definition');
   }
 
+  const requestedPreset = design.preset === '' ? 'default' : design.preset;
+  const preset = knowledge.presets?.[requestedPreset];
+  const presetPalette = preset?.recommendedPalettes[theme] ?? preset?.recommendedPalettes.dark;
+
+  // Precedence: colours the user named explicitly, then the named preset for the
+  // active theme, then the style's recommended palette. A preset never silently
+  // overrides a colour the request asked for.
   const palette =
     design.palette.length > 0
       ? design.palette
-      : (style.recommendedPalettes[theme] ?? style.recommendedPalettes.dark ?? ['#0f172a', '#3b82f6']);
+      : (presetPalette ?? style.recommendedPalettes[theme] ?? style.recommendedPalettes.dark ?? ['#0f172a', '#3b82f6']);
   const colorBg = palette[0] ?? themeTokens.colorBg;
   const colorPrimary = palette[1] ?? '#6366f1';
   const colorFocus = palette[2] ?? colorPrimary;
   const isDark = theme === 'dark';
   const surfaceAlpha = Number(themeTokens.surfaceOpacity);
+  // A preset owns its background, so it also owns the gradient laid over it;
+  // keeping the theme's navy gradient under a nord background would fight it.
+  const colorBgGradient =
+    preset === undefined
+      ? themeTokens.colorBgGradient
+      : isDark
+        ? `radial-gradient(circle at 20% 0%, ${mix(colorBg, colorPrimary, 0.24)} 0%, ${colorBg} 55%)`
+        : `linear-gradient(180deg, #ffffff 0%, ${colorBg} 100%)`;
 
   const tokens: DesignTokens = {
     styleName: design.style,
     theme,
+    presetName: preset === undefined ? 'default' : requestedPreset,
+    presetLabel: preset?.label ?? 'Default',
     colorBg,
-    colorBgGradient: themeTokens.colorBgGradient,
+    colorBgGradient,
     colorText: themeTokens.colorText,
     colorTextMuted: themeTokens.colorTextMuted,
     colorBorder: themeTokens.colorBorder,
@@ -151,6 +173,7 @@ export function computeDesign(design: DesignSpec, knowledge: DesignKnowledge): C
     blur: design.style === 'glassmorphism' ? style.blur : '0px',
     borderStrength: style.borderStrength,
     fontSans: knowledge.type.fontSans,
+    fontSerif: knowledge.type.fontSerif ?? "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif",
     fontXs: knowledge.type.scale.xs,
     fontSm: knowledge.type.scale.sm,
     fontMd: knowledge.type.scale.md,
@@ -163,5 +186,9 @@ export function computeDesign(design: DesignSpec, knowledge: DesignKnowledge): C
     contentMaxWidth: knowledge.layout.contentMaxWidth,
   };
 
-  return { tokens, palette, styleSearchTags: STYLE_SEARCH_TAGS[design.style] ?? [] };
+  return {
+    tokens,
+    palette,
+    styleSearchTags: [...(STYLE_SEARCH_TAGS[design.style] ?? []), ...(preset === undefined ? [] : [requestedPreset])],
+  };
 }

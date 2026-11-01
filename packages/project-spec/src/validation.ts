@@ -32,14 +32,16 @@ export interface SpecValidationResult {
  */
 export const SUPPORTED_MATRIX = {
   web: {
-    frameworks: ['react'],
-    buildSystems: ['vite'],
+    frameworks: ['react', 'node-typescript'],
+    buildSystems: ['vite', 'tsc'],
     languages: ['typescript'],
-    deployment: ['static'],
+    deployment: ['static', 'node-server'],
     stateManagement: ['none', 'react-context'],
     offline: false,
     routes: true,
     authUi: true,
+    /** Page archetypes the server-rendered publication target can serve. */
+    serverBlogPages: ['landing', 'list', 'detail', 'generic'],
   },
   mobile: {
     frameworks: ['react-native'],
@@ -58,7 +60,7 @@ export const SUPPORTED_MATRIX = {
     deployment: ['node-server', 'python-server'],
   },
   design: {
-    styles: ['glassmorphism', 'neumorphism', 'minimal', 'material', 'default'],
+    styles: ['glassmorphism', 'neumorphism', 'minimal', 'material', 'editorial', 'default'],
     themes: ['dark', 'light', 'system'],
     layouts: ['dashboard', 'landing', 'mobile-tabs', 'default'],
   },
@@ -130,7 +132,7 @@ export function validateProjectSpec(spec: ProjectSpec): SpecValidationResult {
           `web:${application.framework}`,
           `A ${application.framework} web application`,
           'No verified web template exists for this framework.',
-          'Only React + Vite web applications are currently supported.',
+          'Only React + Vite and server-rendered Node.js web applications are currently supported.',
         );
       }
       if (!supported.buildSystems.includes(application.buildSystem as 'vite')) {
@@ -142,6 +144,63 @@ export function validateProjectSpec(spec: ProjectSpec): SpecValidationResult {
       }
       if (application.language !== 'typescript') {
         addUnsupported('web.language', `Web language ${application.language}`, 'Only TypeScript is supported for web.');
+      }
+
+      if (application.framework === 'react') {
+        if (application.buildSystem !== 'vite') {
+          add('SPEC_WEB_BUILD', `applications.${application.id}.buildSystem`, 'React web applications are built with Vite.');
+        }
+        if (application.deployment !== 'static') {
+          add(
+            'SPEC_WEB_DEPLOYMENT',
+            `applications.${application.id}.deployment`,
+            'A React web application is a static bundle and must use the "static" deployment target.',
+          );
+        }
+      }
+
+      if (application.framework === 'node-typescript') {
+        if (application.buildSystem !== 'tsc') {
+          add(
+            'SPEC_NODE_BUILD',
+            `applications.${application.id}.buildSystem`,
+            'A server-rendered Node.js application is compiled with tsc.',
+          );
+        }
+        if (application.deployment !== 'node-server') {
+          add(
+            'SPEC_NODE_DEPLOYMENT',
+            `applications.${application.id}.deployment`,
+            'A server-rendered Node.js application must use the "node-server" deployment target.',
+          );
+        }
+        if (application.stateManagement !== 'none') {
+          addUnsupported(
+            'web.server-state',
+            'Client-side state management in a server-rendered publication',
+            'The Node.js publication target renders every page on the server and ships no client JavaScript.',
+            'Request a React application when interactive client state is required.',
+          );
+        }
+        const unsupportedPages = application.pages.filter(
+          (page) => !(supported.serverBlogPages as readonly string[]).includes(page.archetype),
+        );
+        if (unsupportedPages.length > 0) {
+          addUnsupported(
+            `web.server-page:${[...new Set(unsupportedPages.map((page) => page.archetype))].join(',')}`,
+            `Server-rendered page(s): ${unsupportedPages.map((page) => page.name).join(', ')}`,
+            'The Node.js publication target generates a public editorial site (home, archive, articles, categories, tags, search, about, contact), but no authenticated screens or admin UI.',
+            'Request those screens as a separate React application, or add them to the generated project manually.',
+          );
+        }
+        if (application.auth?.required === true) {
+          addUnsupported(
+            'web.server-auth',
+            'Authentication for a server-rendered publication',
+            'The generated Node.js blog has no accounts, sessions or protected routes, so auth would be claimed but never enforced.',
+            'Generate a React client with a JWT backend, or add server-side sessions manually.',
+          );
+        }
       }
       if (application.database !== undefined) {
         addUnsupported(
@@ -165,7 +224,7 @@ export function validateProjectSpec(spec: ProjectSpec): SpecValidationResult {
           'No verified integration exists for this state library.',
         );
       }
-      if (application.auth?.required === true) {
+      if (application.auth?.required === true && application.framework === 'react') {
         const backend = spec.applications.find(
           (candidate) => candidate.kind === 'backend' && candidate.auth?.strategy === 'jwt',
         );

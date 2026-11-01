@@ -138,6 +138,37 @@ export const APPLICATION_RULES: readonly LexiconRule[] = [
     scope: 'backend',
     payload: { language: 'typescript', buildSystem: 'tsc' },
   },
+  {
+    // A Node.js *publication* is a web target, not a JSON backend. The phrases
+    // are deliberately specific: a plain "Node.js API" stays a backend.
+    id: 'app.web.node-blog',
+    phrases: [
+      'node.js blog',
+      'nodejs blog',
+      'node blog',
+      'node.js website',
+      'nodejs website',
+      'node.js site',
+      'nodejs site',
+      'node.js web app',
+      'node.js web application',
+      'express blog',
+      'express website',
+      'express site',
+      'blog using node.js',
+      'blog in node.js',
+      'publication using node.js',
+      'site using node.js',
+      'website using node.js',
+      'server-rendered blog',
+      'server side rendered blog',
+      'ssr blog',
+    ],
+    category: 'framework',
+    value: 'node-typescript',
+    scope: 'web',
+    payload: { note: 'Server-rendered Node.js publication.' },
+  },
 ];
 
 export const PAGE_RULES: readonly LexiconRule[] = [
@@ -151,7 +182,7 @@ export const PAGE_RULES: readonly LexiconRule[] = [
     'list',
     ['list page', 'table page', 'records page', 'users page', 'blog', 'blog posts', 'posts page', 'articles page'],
     'list',
-    'Posts',
+    'Records',
   ),
   page(
     'detail',
@@ -185,6 +216,13 @@ export const DESIGN_RULES: readonly LexiconRule[] = [
     phrases: ['neumorphism', 'neumorphic', 'soft ui'],
     category: 'design.style',
     value: 'neumorphism',
+    scope: 'global',
+  },
+  {
+    id: 'design.editorial',
+    phrases: ['editorial design', 'editorial layout', 'magazine design', 'magazine layout', 'publication design', 'print-inspired', 'print inspired', 'newspaper'],
+    category: 'design.style',
+    value: 'editorial',
     scope: 'global',
   },
   {
@@ -241,6 +279,84 @@ export const DESIGN_RULES: readonly LexiconRule[] = [
     phrases: ['responsive', 'mobile-first', 'mobile first', 'works on mobile', 'adaptive layout'],
     category: 'design.layout',
     value: 'responsive',
+    scope: 'global',
+  },
+];
+
+/**
+ * Named colour presets. They select a palette from `knowledge/design.json` for
+ * the requested light/dark theme; the style (glassmorphism, editorial, …) stays
+ * independent, so "a nord glassmorphism dashboard" composes both.
+ */
+export const DESIGN_PRESET_RULES: readonly LexiconRule[] = [
+  {
+    id: 'design.preset.midnight',
+    phrases: ['midnight theme', 'midnight palette', 'midnight colour scheme', 'midnight color scheme'],
+    category: 'design.preset',
+    value: 'midnight',
+    scope: 'global',
+  },
+  {
+    id: 'design.preset.nord',
+    phrases: ['nord theme', 'nord palette', 'nord colour scheme', 'nord color scheme', 'nord colours', 'nord colors', 'nord'],
+    category: 'design.preset',
+    value: 'nord',
+    scope: 'global',
+  },
+  {
+    id: 'design.preset.dracula',
+    phrases: ['dracula theme', 'dracula palette', 'dracula colour scheme', 'dracula color scheme', 'dracula'],
+    category: 'design.preset',
+    value: 'dracula',
+    scope: 'global',
+  },
+  {
+    id: 'design.preset.solarized',
+    phrases: ['solarized theme', 'solarized palette', 'solarized colour scheme', 'solarized color scheme', 'solarized'],
+    category: 'design.preset',
+    value: 'solarized',
+    scope: 'global',
+  },
+  {
+    id: 'design.preset.sunset',
+    phrases: ['sunset theme', 'sunset palette', 'sunset colour scheme', 'sunset color scheme'],
+    category: 'design.preset',
+    value: 'sunset',
+    scope: 'global',
+  },
+  {
+    id: 'design.preset.forest',
+    phrases: ['forest theme', 'forest palette', 'forest colour scheme', 'forest color scheme'],
+    category: 'design.preset',
+    value: 'forest',
+    scope: 'global',
+  },
+  {
+    id: 'design.preset.ocean',
+    phrases: ['ocean theme', 'ocean palette', 'ocean colour scheme', 'ocean color scheme'],
+    category: 'design.preset',
+    value: 'ocean',
+    scope: 'global',
+  },
+  {
+    id: 'design.preset.rose',
+    phrases: ['rose theme', 'rose palette', 'rose colour scheme', 'rose color scheme'],
+    category: 'design.preset',
+    value: 'rose',
+    scope: 'global',
+  },
+  {
+    id: 'design.preset.mono',
+    phrases: ['monochrome theme', 'monochrome palette', 'mono theme', 'mono palette', 'greyscale theme', 'grayscale theme'],
+    category: 'design.preset',
+    value: 'mono',
+    scope: 'global',
+  },
+  {
+    id: 'design.preset.sand',
+    phrases: ['sand theme', 'sand palette', 'sepia theme', 'sepia palette', 'warm paper theme'],
+    category: 'design.preset',
+    value: 'sand',
     scope: 'global',
   },
 ];
@@ -445,6 +561,7 @@ export const ALL_RULES: readonly LexiconRule[] = [
   ...APPLICATION_RULES,
   ...PAGE_RULES,
   ...DESIGN_RULES,
+  ...DESIGN_PRESET_RULES,
   ...DATA_RULES,
   ...AUTH_RULES,
   ...STATE_RULES,

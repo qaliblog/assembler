@@ -35,6 +35,9 @@ importers:
       '@assembler/project-assembler':
         specifier: workspace:*
         version: link:../../packages/project-assembler
+      '@assembler/project-modifier':
+        specifier: workspace:*
+        version: link:../../packages/project-modifier
       '@assembler/project-planner':
         specifier: workspace:*
         version: link:../../packages/project-planner
@@ -152,6 +155,28 @@ importers:
       typescript:
         specifier: 5.6.3
         version: 5.6.3
+      vitest:
+        specifier: 2.1.9
+        version: 2.1.9(@types/node@18.19.50)
+
+  packages/project-modifier:
+    dependencies:
+      '@assembler/core':
+        specifier: workspace:*
+        version: link:../core
+      '@assembler/environment-manager':
+        specifier: workspace:*
+        version: link:../environment-manager
+      '@assembler/project-spec':
+        specifier: workspace:*
+        version: link:../project-spec
+      typescript:
+        specifier: 5.6.3
+        version: 5.6.3
+    devDependencies:
+      '@types/node':
+        specifier: 18.19.50
+        version: 18.19.50
       vitest:
         specifier: 2.1.9
         version: 2.1.9(@types/node@18.19.50)

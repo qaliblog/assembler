@@ -38,6 +38,12 @@ export interface ThemeTokens {
   readonly surfaceOpacity: string;
 }
 
+export interface DesignPreset {
+  readonly label: string;
+  /** Palette per colour scheme, so a preset never fights the requested theme. */
+  readonly recommendedPalettes: Readonly<Record<string, readonly string[]>>;
+}
+
 export interface StyleTokens {
   readonly radiusSm: string;
   readonly radiusMd: string;
@@ -54,10 +60,13 @@ export interface DesignKnowledge {
   readonly schemaVersion: string;
   readonly themes: Readonly<Record<'dark' | 'light', ThemeTokens>>;
   readonly styles: Readonly<Record<string, StyleTokens>>;
+  readonly presets?: Readonly<Record<string, DesignPreset>>;
   readonly spacing: Readonly<Record<string, string>>;
   readonly layout: Readonly<Record<'sidebarWidth' | 'headerHeight' | 'contentMaxWidth', string>>;
   readonly type: {
     readonly fontSans: string;
+    /** Display and body serif, used by editorial layouts. */
+    readonly fontSerif?: string;
     readonly scale: Readonly<Record<'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl', string>>;
   };
   readonly motion: { readonly transition: string };

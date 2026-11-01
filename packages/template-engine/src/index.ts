@@ -37,6 +37,8 @@ export interface TemplateManifest {
 }
 
 const VARIABLE_PATTERN = /\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g;
+/** `{{> snippetName}}` includes a code snippet from the template's `snippets/` directory. */
+const SNIPPET_PATTERN = /\{\{>\s*([a-zA-Z0-9_./-]+)\s*\}\}/g;
 
 export function extractVariables(template: string): string[] {
   const names = new Set<string>();
@@ -50,13 +52,50 @@ export function extractVariables(template: string): string[] {
 export interface RenderOptions {
   /** Fail when a variable in the template has no value. Default: true. */
   readonly strict?: boolean;
+  /** Named code snippets that `{{> name}}` includes are replaced with. */
+  readonly snippets?: Readonly<Record<string, string>>;
 }
 
-/** Render one template string. Throws TEMPLATE_VARIABLE_MISSING in strict mode. */
+/**
+ * Expand `{{> snippetName}}` includes. Snippets are ordinary code fragments and
+ * may themselves use `{{variable}}` slots or include other snippets; variable
+ * substitution happens afterwards, so the output is code rather than a marker.
+ */
+export function expandSnippets(
+  template: string,
+  snippets: Readonly<Record<string, string>>,
+  depth = 0,
+): string {
+  if (depth > 5) {
+    throw new AssemblerError({
+      code: 'PLAN_INVALID',
+      message: 'Snippet includes are nested more than 5 levels deep',
+    });
+  }
+  return template.replace(SNIPPET_PATTERN, (whole, name: string) => {
+    const snippet = snippets[name];
+    return snippet === undefined ? whole : expandSnippets(snippet, snippets, depth + 1);
+  });
+}
+
+/** Slot markers that survived rendering; empty means the template was filled. */
+export function findUnfilledSlots(rendered: string): string[] {
+  const names = new Set<string>();
+  for (const match of rendered.matchAll(VARIABLE_PATTERN)) {
+    if (match[1] !== undefined) names.add(match[1]);
+  }
+  for (const match of rendered.matchAll(SNIPPET_PATTERN)) {
+    if (match[1] !== undefined) names.add(`> ${match[1]}`);
+  }
+  return [...names].sort();
+}
+
+/** Render one template string. Throws PLAN_INVALID in strict mode on any unfilled slot. */
 export function renderTemplate(template: string, variables: Readonly<Record<string, string | number>>, options: RenderOptions = {}): string {
   const strict = options.strict ?? true;
+  const expanded = options.snippets === undefined ? template : expandSnippets(template, options.snippets);
   const missing = new Set<string>();
-  const output = template.replace(VARIABLE_PATTERN, (whole, name: string) => {
+  const output = expanded.replace(VARIABLE_PATTERN, (whole, name: string) => {
     const value = variables[name];
     if (value === undefined) {
       missing.add(name);
@@ -73,7 +112,42 @@ export function renderTemplate(template: string, variables: Readonly<Record<stri
       details: { missing: [...missing].sort() },
     });
   }
+  if (strict) {
+    const unfilled = findUnfilledSlots(output);
+    if (unfilled.length > 0) {
+      throw new AssemblerError({
+        code: 'PLAN_INVALID',
+        message: `Template still contains unfilled slot(s): ${unfilled.join(', ')}`,
+        details: { unfilled },
+      });
+    }
+  }
   return output;
+}
+
+/**
+ * Load every file under `snippets/` as a named snippet. `.tmpl` is optional in
+ * the name, so `{{> tokens.css}}` matches both `tokens.css` and `tokens.css.tmpl`.
+ */
+export async function loadSnippets(directory: string): Promise<Record<string, string>> {
+  const snippetDir = path.join(directory, 'snippets');
+  let entries: Awaited<ReturnType<typeof fs.readdir>>;
+  try {
+    entries = await fs.readdir(snippetDir, { withFileTypes: true });
+  } catch {
+    return {};
+  }
+  const snippets: Record<string, string> = {};
+  for (const entry of [...entries].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    if (!entry.isFile()) continue;
+    const raw = await fs.readFile(path.join(snippetDir, entry.name), 'utf8');
+    // Drop the file's final newline: the include line already carries one, so
+    // snippets compose without accumulating blank lines.
+    const text = raw.endsWith('\n') ? raw.slice(0, -1) : raw;
+    snippets[entry.name] = text;
+    if (entry.name.endsWith('.tmpl')) snippets[entry.name.slice(0, -'.tmpl'.length)] = text;
+  }
+  return snippets;
 }
 
 /** List every variable a template set references, for documentation and tests. */
@@ -129,6 +203,8 @@ export async function renderTemplateSet(
 ): Promise<RenderedFile[]> {
   const rendered: RenderedFile[] = [];
   const seen = new Set<string>();
+  const snippets = options.snippets ?? (await loadSnippets(directory));
+  const renderOptions: RenderOptions = { ...options, snippets };
   for (const file of manifest.files) {
     if (seen.has(file.target)) {
       throw new AssemblerError({
@@ -148,7 +224,7 @@ export async function renderTemplateSet(
         cause: error,
       });
     }
-    const output = file.mode === 'render' ? renderTemplate(content, variables, options) : content;
+    const output = file.mode === 'render' ? renderTemplate(content, variables, renderOptions) : content;
     rendered.push({
       target: file.target,
       content: output,

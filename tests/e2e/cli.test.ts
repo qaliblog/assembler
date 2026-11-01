@@ -110,6 +110,35 @@ describe('assembler CLI', () => {
     expect(parseJson<{ ok: boolean }>(inspect.stdout).ok).toBe(true);
   }, 180_000);
 
+  it('modifies a generated project through the CLI and keeps the manifest verifiable', async () => {
+    const modify = await runCli(
+      [
+        'modify',
+        'Add an admin dashboard',
+        '--workspace',
+        './cli-app',
+        '--root',
+        repositoryRoot,
+        '--no-typecheck',
+        '--no-tests',
+        '--json',
+      ],
+      root,
+    );
+    expect(modify.code).toBe(0);
+    const payload = parseJson<{ report: { status: string; verification: { skipped: boolean } } }>(modify.stdout);
+    expect(payload.report.status).toBe('modified');
+    expect(payload.report.verification.skipped).toBe(true);
+
+    const routes = await fs.readFile(path.join(root, 'cli-app', 'src', 'app', 'routes.tsx'), 'utf8');
+    expect(routes).toContain('AdminPage');
+    expect(routes).toContain('/dashboard');
+
+    const inspect = await runCli(['inspect', './cli-app', '--root', repositoryRoot, '--json'], root);
+    expect(inspect.code).toBe(0);
+    expect(parseJson<{ ok: boolean }>(inspect.stdout).ok).toBe(true);
+  }, 120_000);
+
   it('refuses to build into a non-empty directory with the default policy', async () => {
     const specFile = path.join(root, 'project.json');
     const result = await runCli(

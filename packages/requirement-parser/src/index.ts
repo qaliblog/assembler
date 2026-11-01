@@ -6,6 +6,7 @@ export {
   COLOR_RULES,
   DATA_RULES,
   DESIGN_RULES,
+  DESIGN_PRESET_RULES,
   INTEGRATION_RULES,
   NATIVE_RULES,
   OFFLINE_RULES,
@@ -28,3 +29,11 @@ export {
   type ExtractionResult,
 } from './extract.js';
 export { INTERPRETER_VERSION, interpretRequirement, type InterpretationOutcome } from './interpreter.js';
+export {
+  INTENT_PRIORITY,
+  classifyIntent,
+  describeIntent,
+  type Intent,
+  type IntentClassification,
+  type IntentMatch,
+} from './intent.js';

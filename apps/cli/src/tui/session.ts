@@ -20,13 +20,21 @@ import {
 import {
   inspectTarget,
   verifyGeneratedProject,
+  type AssemblyFileEvent,
   type AssemblyReport,
   type AssemblyStepEvent,
   type TargetInspection,
 } from '@assembler/project-assembler';
 import { assembleProject } from '@assembler/project-assembler';
 import { analyzeProject, summarizeInventory } from '../analyze.js';
-import { interpretRequirement, type InterpretationOutcome } from '@assembler/requirement-parser';
+import { describeIntent, interpretRequirement, type InterpretationOutcome } from '@assembler/requirement-parser';
+import {
+  applyModification,
+  loadGeneratedProject,
+  planModification,
+  type ModificationPlan,
+  type ModificationReport,
+} from '@assembler/project-modifier';
 import { planProject, type PlanResult } from '@assembler/project-planner';
 import type { ProjectSpec } from '@assembler/project-spec';
 
@@ -57,6 +65,7 @@ export interface SessionConfirmation {
 
 export type SessionOutcome =
   | { readonly status: 'built'; readonly report: AssemblyReport }
+  | { readonly status: 'modified'; readonly report: ModificationReport }
   | { readonly status: 'blocked'; readonly reason: string }
   | { readonly status: 'failed'; readonly reason: string }
   | { readonly status: 'cancelled' }
@@ -313,12 +322,12 @@ export class TuiSession {
     const accepted = ['y', 'yes', 'overwrite'].includes(normalised);
     const declined = ['n', 'no', 'cancel'].includes(normalised);
     if (!accepted && !declined) {
-      this.push('warning', 'Please answer "yes" to overwrite the conflicting files, or "no" to leave them untouched.');
+      this.push('warning', 'Please answer "yes" to continue, or "no" to cancel. Nothing has been changed yet.');
       return;
     }
     this.confirmation = null;
     this.confirmationAnswer = null;
-    this.push('info', accepted ? 'Overwrite confirmed.' : 'Overwrite declined; nothing was written.');
+    this.push('info', accepted ? 'Confirmed.' : 'Declined; nothing was written.');
     resolve?.(accepted);
   }
 
@@ -330,7 +339,7 @@ export class TuiSession {
     if (this.options.nonInteractive === true) {
       this.push(
         'warning',
-        `${question} No interactive answer is possible, so existing files were left untouched. Re-run with --yes to overwrite them, or choose an empty directory with --workspace.`,
+        `${question} No interactive answer is possible, so nothing was written. Re-run with --yes to apply it, or choose an empty directory with --workspace for a new project.`,
       );
       for (const detail of details) this.push('detail', detail);
       return Promise.resolve(false);
@@ -357,11 +366,13 @@ export class TuiSession {
         this.push('info', 'Commands:');
         this.push('detail', '/help                 show this list');
         this.push('detail', '/workspace            show the absolute workspace path and contents');
-        this.push('detail', '/plan [request]       preview a plan without writing files');
+        this.push('detail', '/plan [request]       preview a new project or a modification plan without writing');
         this.push('detail', '/inspect              verify the project against its recorded manifest');
         this.push('detail', '/doctor               check runtimes, package managers and capabilities');
         this.push('detail', '/history              list recorded assemblies for this workspace');
         this.push('detail', '/analyze              inventory existing code in the workspace');
+        this.push('detail', '/debug                analysis + environment status + recorded diagnostics');
+        this.push('detail', '/test                 run the project test script with the detected package manager');
         this.push('detail', '/clear                clear the log');
         this.push('detail', '/quit                 exit');
         this.push('detail', 'Type a request to build a project, or use up/down for history.');
@@ -383,6 +394,12 @@ export class TuiSession {
         return;
       case '/analyze':
         await this.analyzeWorkspace();
+        return;
+      case '/debug':
+        await this.debugWorkspace();
+        return;
+      case '/test':
+        await this.testWorkspace();
         return;
       case '/clear':
         this.clearLog();
@@ -453,6 +470,67 @@ export class TuiSession {
     for (const line of summarizeInventory(inventory)) this.push('detail', line);
   }
 
+  /** Read-only diagnosis: code inventory, environment and recorded failures. */
+  private async debugWorkspace(): Promise<void> {
+    const inventory = await analyzeProject(this.workspace.root);
+    for (const line of summarizeInventory(inventory)) this.push('detail', line);
+
+    const scan = await scanEnvironment({ workspace: this.workspace, probeNetwork: false });
+    const satisfied = scan.capabilities.filter((entry) => entry.status === 'satisfied').length;
+    this.push('info', `Environment: ${satisfied}/${scan.capabilities.length} capabilities satisfied`);
+    for (const line of summarizeScan(scan)) this.push('detail', line);
+
+    const rows = this.workspace
+      .database()
+      .all<{ category: string; severity: string; message: string; fingerprint: string; created_at: string }>(
+        'SELECT category, severity, message, fingerprint, created_at FROM diagnostics WHERE project_path = ? ORDER BY created_at DESC LIMIT 20',
+        [path.resolve(this.workspace.root)],
+      );
+    if (rows.length === 0) {
+      this.push('info', 'No diagnostics have been recorded for this workspace.');
+    } else {
+      this.push('info', `${rows.length} recorded diagnostic(s):`);
+      for (const row of rows) {
+        this.push('detail', `[${row.category}/${row.severity}] ${row.message} (${row.fingerprint})`);
+      }
+    }
+  }
+
+  /** Run the workspace's own test script; never invents a test command. */
+  private async testWorkspace(): Promise<void> {
+    const manifest = path.join(this.workspace.root, 'package.json');
+    try {
+      await fs.access(manifest);
+    } catch {
+      this.push('warning', 'No package.json in this workspace, so there is no test script to run.');
+      return;
+    }
+    const scan = await scanEnvironment({ workspace: this.workspace, probeNetwork: false });
+    const manager = scan.packageManager;
+    if (manager === null) {
+      this.push('error', 'No healthy package manager is available to run the tests.');
+      return;
+    }
+    this.push('info', `Running ${manager.name} run test…`);
+    const result = await this.workspace.processes.run({
+      executable: manager.executable,
+      args: ['run', 'test'],
+      cwd: this.workspace.root,
+      timeoutMs: this.workspace.config.process.defaultTimeoutMs * 3,
+      env: { CI: '1', NO_COLOR: '1', FORCE_COLOR: '0' },
+    });
+    const seconds = (result.durationMs / 1000).toFixed(1);
+    const ok = result.exitCode === 0 && !result.timedOut;
+    this.push(
+      ok ? 'success' : 'error',
+      `Tests ${ok ? 'passed' : 'failed'} (exit ${String(result.exitCode)}, ${seconds}s) — ${result.commandLine}`,
+    );
+    const output = `${result.stdout}\n${result.stderr}`.trim();
+    if (output !== '') {
+      for (const line of output.split('\n').slice(-20)) this.push('detail', line);
+    }
+  }
+
   private async inspectProject(): Promise<void> {
     try {
       const result = await verifyGeneratedProject(this.workspace, this.workspace.root);
@@ -480,6 +558,34 @@ export class TuiSession {
       return;
     }
     const outcome = interpretRequirement(request, { source: 'user-request' });
+    this.push('detail', `Intent: ${describeIntent(outcome.intents)}`);
+
+    // A change request in a generated workspace is previewed as a modification,
+    // not as a new project that would overwrite the existing one.
+    if (outcome.intents.requiresExistingProject) {
+      const markers = await this.detectExistingProject();
+      if (markers.length > 0) {
+        const loaded = await loadGeneratedProject(this.workspace.root);
+        if (!loaded.ok) {
+          this.push('warning', `${loaded.code}: ${loaded.message}`);
+          this.push('info', 'Preview only: no files were written.');
+          return;
+        }
+        const modification = planModification(request, loaded.context);
+        this.describeModificationPlan(modification);
+        if (modification.blockers.length > 0) {
+          this.push('error', `The modification plan has ${modification.blockers.length} blocker(s); nothing would be written.`);
+          for (const blocker of modification.blockers) {
+            this.push('detail', `[${blocker.code}] ${blocker.message}`);
+            if (blocker.hint !== undefined) this.push('detail', blocker.hint);
+          }
+        } else {
+          this.push('info', 'Preview only: no files were written.');
+        }
+        return;
+      }
+    }
+
     if (outcome.spec === null) {
       this.reportInterpretationFailure(outcome);
       return;
@@ -508,7 +614,10 @@ export class TuiSession {
             : ''),
       );
     }
-    this.push('detail', `Design: ${spec.design.style} / ${spec.design.theme} / ${spec.design.layout}`);
+    this.push(
+      'detail',
+      `Design: ${spec.design.style} / ${spec.design.theme} / ${spec.design.preset} / ${spec.design.layout}`,
+    );
   }
 
   private describeInspection(inspection: TargetInspection): void {
@@ -549,6 +658,137 @@ export class TuiSession {
 
   /* ---------------------------------------------------------------- pipeline */
 
+  /**
+   * Markers that mean "there is already a project here". Used only to refuse a
+   * change request honestly instead of generating over the user's workspace.
+   */
+  private async detectExistingProject(): Promise<string[]> {
+    const markers = [
+      'package.json',
+      'pnpm-lock.yaml',
+      'yarn.lock',
+      'pyproject.toml',
+      'requirements.txt',
+      'Cargo.toml',
+      'pom.xml',
+      'build.gradle',
+      'build.gradle.kts',
+      'settings.gradle',
+      'go.mod',
+      'composer.json',
+    ];
+    const found: string[] = [];
+    for (const marker of markers) {
+      try {
+        await fs.access(path.join(this.workspace.root, marker));
+        found.push(marker);
+      } catch {
+        // Absent: not a project marker.
+      }
+    }
+    return found;
+  }
+
+  /** Describe the planned edits, their task graph and their risks. */
+  private describeModificationPlan(plan: ModificationPlan): void {
+    this.push('info', `Modification plan: ${plan.summary}`);
+    this.push('detail', plan.rationale);
+    for (const change of plan.changes) {
+      this.push('detail', `  ${change.action.padEnd(6)} ${change.path} — ${change.description}`);
+    }
+    this.push(
+      'detail',
+      `  tasks: ${plan.tasks
+        .map((task) => `${task.id}${task.dependsOn.length === 0 ? '' : `(${task.dependsOn.join(',')})`}`)
+        .join(' → ')}`,
+    );
+    for (const criterion of plan.acceptanceCriteria) this.push('detail', `  acceptance: ${criterion}`);
+    for (const risk of plan.risks) this.push('detail', `  risk: ${risk}`);
+    for (const note of plan.notes) this.push('warning', note);
+  }
+
+  private reportModification(report: ModificationReport, plan: ModificationPlan): void {
+    this.push('info', `Modification: ${plan.page.title} at ${plan.page.route} (${plan.page.componentName})`);
+    this.push(
+      'detail',
+      `Verification: typecheck=${String(report.verification.typechecked)} test=${String(report.verification.tested)} skipped=${String(report.verification.skipped)}`,
+    );
+    for (const command of report.commands) {
+      this.push(
+        command.ok ? 'detail' : 'error',
+        `${command.ok ? 'ok' : 'FAIL'} ${command.commandLine} (${(command.durationMs / 1000).toFixed(1)}s)`,
+      );
+    }
+    if (report.backupDir !== null) this.push('detail', `Recovery backup: ${report.backupDir}`);
+    for (const note of report.notes) this.push('detail', note);
+    if (report.rolledBack) this.push('warning', 'The change failed verification and was rolled back.');
+  }
+
+  /**
+   * Plan and apply a change to an Assembler-generated project. Returns false when
+   * the workspace has no project markers, so the caller can generate a new one.
+   */
+  private async tryModifyExistingProject(request: string): Promise<boolean> {
+    const markers = await this.detectExistingProject();
+    if (markers.length === 0) return false;
+
+    const loaded = await loadGeneratedProject(this.workspace.root);
+    if (!loaded.ok) {
+      this.errorCode = loaded.code;
+      this.outcome = { status: 'blocked', reason: loaded.message };
+      this.push('warning', `${loaded.code}: ${loaded.message}`);
+      this.push(
+        'detail',
+        `Found ${markers.join(', ')}. Modification supports projects generated by Assembler; /analyze inspects any workspace without writing. Nothing was written.`,
+      );
+      return true;
+    }
+
+    const plan = planModification(request, loaded.context);
+    this.describeModificationPlan(plan);
+    if (plan.blockers.length > 0) {
+      this.errorCode = plan.blockers[0]?.code ?? 'MODIFICATION_BLOCKED';
+      this.outcome = { status: 'blocked', reason: 'modification blockers' };
+      this.push('error', `The modification plan has ${plan.blockers.length} blocker(s); nothing was written.`);
+      for (const blocker of plan.blockers) {
+        this.push('detail', `[${blocker.code}] ${blocker.message}`);
+        if (blocker.hint !== undefined) this.push('detail', blocker.hint);
+      }
+      return true;
+    }
+
+    const approved = await this.ask(
+      `Apply this change to ${plan.project.name}?`,
+      plan.changes.map((change) => `${change.action} ${change.path}`),
+    );
+    if (!approved) {
+      this.errorCode = 'CANCELLED';
+      this.outcome = { status: 'declined' };
+      this.push('warning', 'Cancelled: no files were changed.');
+      return true;
+    }
+
+    this.push('phase', '[modify] Applying planned changes and verifying…');
+    this.setPhase('building', '[modify] Applying and verifying…');
+    const report = await applyModification({
+      workspace: this.workspace,
+      plan,
+      typecheck: this.options.typecheck,
+      tests: this.options.tests,
+      abortSignal: this.abortController?.signal,
+    });
+    this.reportModification(report, plan);
+    if (report.status === 'modified') {
+      this.outcome = { status: 'modified', report };
+      this.push('success', 'Project modified successfully.');
+    } else {
+      this.errorCode = 'MODIFICATION_FAILED';
+      this.outcome = { status: 'failed', reason: report.notes[0] ?? 'modification failed' };
+      this.push('error', 'Modification failed; the project was restored.');
+    }
+    return true;
+  }
+
   private async generate(request: string): Promise<void> {
     this.busy = true;
     this.outcome = { status: 'idle' };
@@ -565,10 +805,20 @@ export class TuiSession {
         this.finish('failed');
         return;
       }
+      this.push('detail', `Intent: ${describeIntent(outcome.intents)}`);
+
+      // A change request against an existing project must never be answered by
+      // generating a new project over it. Plan and apply a bounded modification;
+      // if the workspace was not generated by Assembler, write nothing.
+      if (outcome.intents.requiresExistingProject) {
+        const handled = await this.tryModifyExistingProject(request);
+        if (handled) return;
+      }
+
       let spec = outcome.spec;
       // When the request names no project, use the workspace directory: building a
       // blog in `my-blog/` should not produce a package called "react-app".
-      if (spec.name === 'React App') {
+      if (spec.name === 'React App' || spec.name === 'Node App') {
         const derived = nameFromDirectory(this.workspace.root);
         if (derived !== null) {
           spec = { ...spec, name: derived.name, slug: derived.slug };
@@ -649,6 +899,7 @@ export class TuiSession {
         abortSignal: this.abortController.signal,
         ...(this.options.now === undefined ? {} : { now: this.options.now }),
         onStep: (event) => this.onStep(event),
+        onFile: (event) => this.onFile(event),
       });
 
       this.reportAssembly(report);
@@ -660,7 +911,12 @@ export class TuiSession {
         this.push('warning', 'Assembly cancelled. The workspace was not published.');
       } else {
         this.outcome = { status: 'failed', reason: report.failures[0]?.summary ?? 'assembly failed' };
-        this.push('error', 'Build failed. The workspace was left as it was.');
+        this.push(
+          'error',
+          report.published
+            ? `Build failed after writing ${report.filesWritten} file(s). Those files were kept in the workspace; fix the failing step and re-run it there.`
+            : 'Build failed. The workspace was left as it was.',
+        );
       }
     } catch (error) {
       const assemblerError = isAssemblerError(error)
@@ -678,11 +934,20 @@ export class TuiSession {
       this.push('error', `${assemblerError.code}: ${assemblerError.message}`);
       if (assemblerError.hint !== undefined) this.push('detail', assemblerError.hint);
     } finally {
-      this.finish(this.outcome.status === 'built' ? 'done' : 'failed');
+      this.finish(this.outcome.status === 'built' || this.outcome.status === 'modified' ? 'done' : 'failed');
       this.busy = false;
       this.abortController = null;
       this.emit();
     }
+  }
+
+  /** Live file-generation log: every file is reported as it reaches disk. */
+  private onFile(event: AssemblyFileEvent): void {
+    this.push(
+      'detail',
+      `${event.writtenToWorkspace ? 'wrote' : 'staged'} ${event.path} (${event.index + 1}/${event.total})`,
+    );
+    this.emit();
   }
 
   /** Map real assembler step events onto the status line. */

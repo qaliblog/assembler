@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0",
-  "note": "Pinned versions are part of the determinism contract: the planner never resolves floating ranges. A version is only listed here after the generated project was built and tested on the supported toolchain.",
+  "note": "Pinned versions are part of the determinism contract: the planner never resolves floating ranges. A target is only claimed as verified when a test assembles it end to end; entries marked unverified are pins for work that is not implemented.",
   "targets": {
     "web": {
       "framework": "react",
@@ -20,6 +20,24 @@
         "jsdom": "25.0.1",
         "typescript": "5.6.3",
         "vite": "5.4.11",
+        "vitest": "2.1.9"
+      },
+      "toolchain": ["node.runtime", "node.package-manager"],
+      "commands": {
+        "install": ["install"],
+        "typecheck": ["run", "typecheck"],
+        "test": ["run", "test"],
+        "build": ["run", "build"]
+      }
+    },
+    "node-blog": {
+      "framework": "node-typescript",
+      "language": "typescript",
+      "nodeRange": ">=18.18.0",
+      "dependencies": {},
+      "devDependencies": {
+        "@types/node": "18.19.50",
+        "typescript": "5.6.3",
         "vitest": "2.1.9"
       },
       "toolchain": ["node.runtime", "node.package-manager"],
@@ -78,17 +96,26 @@
       "pluginReact": "4.3.4",
       "typescript": "5.6.3",
       "status": "verified",
-      "verifiedBy": "tests/e2e/web-assembly.test.ts",
+      "verifiedBy": "tests/e2e/assembly.test.ts",
       "note": "Generated project typechecks, passes vitest and completes `vite build`."
+    },
+    {
+      "id": "node-blog-2026-01",
+      "node": ">=18.18.0",
+      "typescript": "5.6.3",
+      "runtimeDependencies": "none",
+      "status": "verified",
+      "verifiedBy": "tests/e2e/node-blog.test.ts",
+      "note": "Generated publication typechecks, passes 48 route/content/link tests and compiles to dist."
     },
     {
       "id": "node-backend-2026-01",
       "node": ">=18.18.0",
       "typescript": "5.6.3",
       "sqlite": "node-sqlite3-wasm@0.8.61",
-      "status": "verified",
-      "verifiedBy": "tests/e2e/backend-assembly.test.ts",
-      "note": "Generated project typechecks, passes route tests and compiles to dist."
+      "status": "unverified",
+      "verifiedBy": null,
+      "note": "Pinned for future backend work. No backend assembler or template exists in this milestone, so nothing is claimed."
     }
   ]
 }

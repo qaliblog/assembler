@@ -16,7 +16,7 @@ import { TuiSession, type SessionOptions } from './session.js';
 function exitCodeFor(session: TuiSession): number {
   const state = session.state;
   // Quitting without having run anything is a normal exit, not a failure.
-  if (state.outcome === 'built' || state.outcome === 'idle') return EXIT.ok;
+  if (state.outcome === 'built' || state.outcome === 'modified' || state.outcome === 'idle') return EXIT.ok;
   if (session.lastErrorCode === 'CAPABILITY_UNSATISFIED') return EXIT.capability;
   if (state.outcome === 'blocked' || state.outcome === 'declined') return EXIT.usage;
   return EXIT.failure;
@@ -209,6 +209,8 @@ export const SLASH_COMMANDS = [
   '/doctor',
   '/history',
   '/analyze',
+  '/debug',
+  '/test',
   '/clear',
   '/quit',
 ] as const;

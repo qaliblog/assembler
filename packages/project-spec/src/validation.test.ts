@@ -47,6 +47,7 @@ export function sampleSpec(overrides: Partial<ProjectSpec> = {}): ProjectSpec {
     design: {
       style: 'glassmorphism',
       theme: 'dark',
+      preset: 'default',
       palette: ['#0f172a', '#38bdf8'],
       layout: 'dashboard',
       responsive: true,

@@ -52,6 +52,20 @@
         "light": ["#e0e5ec", "#6366f1", "#0ea5e9"]
       }
     },
+    "editorial": {
+      "radiusSm": "2px",
+      "radiusMd": "4px",
+      "radiusLg": "8px",
+      "blur": "0px",
+      "shadowSm": "0 1px 0 rgba(15, 23, 42, 0.24)",
+      "shadowMd": "0 24px 60px rgba(2, 6, 23, 0.36)",
+      "borderStrength": "1px solid",
+      "surfaceSaturation": "100%",
+      "recommendedPalettes": {
+        "dark": ["#0d0f14", "#e2b457", "#f3d08a"],
+        "light": ["#fbf9f4", "#9a3412", "#b45309"]
+      }
+    },
     "minimal": {
       "radiusSm": "6px",
       "radiusMd": "10px",
@@ -95,6 +109,78 @@
       }
     }
   },
+  "presets": {
+    "midnight": {
+      "label": "Midnight",
+      "recommendedPalettes": {
+        "dark": ["#0a0f1f", "#6366f1", "#38bdf8"],
+        "light": ["#eef2ff", "#4338ca", "#0284c7"]
+      }
+    },
+    "nord": {
+      "label": "Nord",
+      "recommendedPalettes": {
+        "dark": ["#2e3440", "#88c0d0", "#a3be8c"],
+        "light": ["#eceff4", "#5e81ac", "#8fbcbb"]
+      }
+    },
+    "dracula": {
+      "label": "Dracula",
+      "recommendedPalettes": {
+        "dark": ["#282a36", "#bd93f9", "#ff79c6"],
+        "light": ["#f8f8f2", "#7c3aed", "#db2777"]
+      }
+    },
+    "solarized": {
+      "label": "Solarized",
+      "recommendedPalettes": {
+        "dark": ["#002b36", "#268bd2", "#b58900"],
+        "light": ["#fdf6e3", "#268bd2", "#b58900"]
+      }
+    },
+    "sunset": {
+      "label": "Sunset",
+      "recommendedPalettes": {
+        "dark": ["#1a1024", "#f97316", "#ec4899"],
+        "light": ["#fff7ed", "#ea580c", "#db2777"]
+      }
+    },
+    "forest": {
+      "label": "Forest",
+      "recommendedPalettes": {
+        "dark": ["#0b1a12", "#22c55e", "#a3e635"],
+        "light": ["#f0fdf4", "#15803d", "#4d7c0f"]
+      }
+    },
+    "ocean": {
+      "label": "Ocean",
+      "recommendedPalettes": {
+        "dark": ["#041f2e", "#06b6d4", "#14b8a6"],
+        "light": ["#ecfeff", "#0e7490", "#0f766e"]
+      }
+    },
+    "rose": {
+      "label": "Rose",
+      "recommendedPalettes": {
+        "dark": ["#1f1014", "#fb7185", "#f472b6"],
+        "light": ["#fff1f2", "#e11d48", "#be185d"]
+      }
+    },
+    "mono": {
+      "label": "Monochrome",
+      "recommendedPalettes": {
+        "dark": ["#111111", "#e5e5e5", "#a3a3a3"],
+        "light": ["#fafafa", "#171717", "#525252"]
+      }
+    },
+    "sand": {
+      "label": "Sand",
+      "recommendedPalettes": {
+        "dark": ["#1c1917", "#d6b370", "#a8a29e"],
+        "light": ["#f5efe3", "#b45309", "#78350f"]
+      }
+    }
+  },
   "spacing": {
     "xs": "4px",
     "sm": "8px",
@@ -109,6 +195,7 @@
   },
   "type": {
     "fontSans": "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif",
+    "fontSerif": "'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, 'Times New Roman', serif",
     "scale": {
       "xs": "0.75rem",
       "sm": "0.875rem",

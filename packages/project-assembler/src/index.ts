@@ -4,6 +4,7 @@ export {
   inspectTarget,
   verifyGeneratedProject,
   type AssembleOptions,
+  type AssemblyFileEvent,
   type AssemblyReport,
   type AssemblyStatus,
   type AssemblyStepEvent,

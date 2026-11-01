@@ -158,3 +158,48 @@ describe('extraction transparency', () => {
     expect(result.notes.join(' ')).toContain('did not map to any requirement');
   });
 });
+
+describe('server-rendered Node.js publications', () => {
+  it('recognises a Node.js blog even when the clause split separates the terms', () => {
+    const result = interpret('Create a professional blog using Node.js with a dark theme and tests');
+    expect(result.status).toBe('ready');
+    const spec = result.spec;
+    if (spec === null) throw new Error('expected a spec');
+    expect(spec.applications).toHaveLength(1);
+    const web = spec.applications[0];
+    expect(web?.kind).toBe('web');
+    expect(web?.framework).toBe('node-typescript');
+    expect(web?.buildSystem).toBe('tsc');
+    expect(web?.deployment).toBe('node-server');
+    expect(web?.pages.map((page) => page.route)).toContain('/posts');
+    expect(spec.design.style).toBe('editorial');
+    expect(spec.design.theme).toBe('dark');
+    expect(spec.testing.unit).toBe(true);
+    expect(result.unsupported).toEqual([]);
+  });
+
+  it('keeps React requests on the React target', () => {
+    const result = interpret('Create a React blog with categories and a light theme');
+    const spec = result.spec;
+    if (spec === null) throw new Error('expected a spec');
+    expect(spec.applications[0]?.framework).toBe('react');
+    expect(spec.applications[0]?.deployment).toBe('static');
+    expect(spec.design.style).toBe('default');
+  });
+
+  it('reports admin screens and authentication instead of silently dropping them', () => {
+    const result = interpret('Create a Node.js blog with a dashboard page and authentication');
+    expect(result.status).toBe('unsupported');
+    const capabilities = result.unsupported.map((entry) => entry.capability);
+    expect(capabilities.some((capability) => capability.startsWith('web.server-page'))).toBe(true);
+    expect(capabilities).toContain('web.server-auth');
+    const spec = result.spec;
+    if (spec === null) throw new Error('expected a spec');
+    expect(spec.applications[0]?.auth?.required).toBe(true);
+  });
+
+  it('is deterministic for the same Node.js request', () => {
+    const request = 'Create a Node.js blog with editorial design and tests';
+    expect(JSON.stringify(interpret(request).spec)).toBe(JSON.stringify(interpret(request).spec));
+  });
+});

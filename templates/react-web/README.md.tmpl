@@ -31,8 +31,13 @@ The production build is written to `dist/`. The development server runs on port 
 
 ## Design system
 
-The `{{styleName}}` style and `{{theme}}` theme are compiled into `src/styles/tokens.css`.
-Components consume tokens only; there is no hard-coded colour or spacing in components.
+The `{{styleName}}` style, `{{presetLabel}}` colour preset and `{{theme}}` theme are
+compiled into `src/styles/tokens.css`. Components consume tokens only; there is no
+hard-coded colour or spacing in components. To generate a different palette, change
+`design.preset` / `design.theme` in the project specification before planning; the
+tokens are generated from it, not hand-edited.
+
+Palette: `{{colorBg}}` background, `{{colorPrimary}}` primary, `{{colorFocus}}` accent.
 
 ## What is generated and what is not
 

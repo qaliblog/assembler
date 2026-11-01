@@ -24,6 +24,7 @@ import {
   type UnsupportedCapability,
 } from '@assembler/project-spec';
 import { extractFacts, factsFor, type AppKind, type ExtractionResult, type ExtractedFact } from './extract.js';
+import { classifyIntent, type IntentClassification } from './intent.js';
 
 export const INTERPRETER_VERSION = '0.1.0';
 
@@ -36,9 +37,12 @@ export interface InterpretationOutcome {
   readonly ledger: readonly RequirementLedgerEntry[];
   readonly notes: readonly string[];
   readonly extraction: ExtractionResult;
+  /** What kind of work the request asks for; advisory, with evidence. */
+  readonly intents: IntentClassification;
 }
 
 const DEFAULT_PALETTES: Readonly<Record<string, readonly string[]>> = {
+  editorial: ['#0d0f14', '#e2b457', '#f3d08a'],
   glassmorphism: ['#0b1120', '#6366f1', '#38bdf8'],
   neumorphism: ['#e0e5ec', '#a3b1c6'],
   minimal: ['#ffffff', '#111827'],
@@ -65,6 +69,13 @@ function kebab(value: string): string {
     .toLowerCase()
     .replace(/^-+|-+$/g, '');
 }
+
+/** Routes that the server-rendered publication actually serves. */
+const NODE_BLOG_PAGE_ROUTES: Readonly<Record<string, string>> = {
+  landing: '/',
+  list: '/posts',
+  detail: '/posts/:slug',
+};
 
 function routeFor(archetype: string, name: string): string {
   switch (archetype) {
@@ -311,12 +322,15 @@ export function interpretRequirement(
         ledger: ledger.all(),
         notes,
         extraction,
+        intents: classifyIntent(text),
       };
     }
   }
 
   /* ------------------------------------------------------ applications */
   const applications: ApplicationSpec[] = [];
+  // Set while the web application is built; the design default below uses it.
+  let serverRenderedWeb = false;
   // Generic page mentions ("an orders page") attach to the first UI target.
   const firstUiKind: AppKind | null = requestedKinds.has('web')
     ? 'web'
@@ -327,26 +341,65 @@ export function interpretRequirement(
   if (requestedKinds.has('web')) {
     const webFacts = factsFor(extraction, 'web');
     const frameworkFacts = webFacts.filter((fact) => fact.category === 'framework');
-    const buildSystems = new Set(webFacts.filter((fact) => fact.category === 'build-system').map((fact) => fact.value));
     const appId = applicationIdFor('web');
+
+    // "Create a professional blog using Node.js" can be split by the clause
+    // segmenter, so the language and the publication type are also combined here.
+    const nodeWebFact = webFacts.find(
+      (fact) => fact.category === 'framework' && fact.value === 'node-typescript',
+    );
+    const nodeBlogInferred =
+      nodeWebFact === undefined &&
+      requestedKinds.size === 1 &&
+      requestedKinds.has('web') &&
+      /\bnode(?:\.js|js)?\b|\bexpress\b/i.test(text) &&
+      /\b(blog|weblog|publication|magazine|journal)\b/i.test(text) &&
+      !/\breact\b/i.test(text) &&
+      !webFacts.some((fact) => fact.category === 'framework' && fact.value === 'unsupported-web-framework');
+    const serverBlog = nodeWebFact !== undefined || nodeBlogInferred;
+    serverRenderedWeb = serverBlog;
+    const framework = serverBlog ? 'node-typescript' : 'react';
+    const buildSystem = serverBlog ? 'tsc' : 'vite';
 
     for (const fact of webFacts) {
       if (fact.category === 'framework' || fact.category === 'project.kind') ledger.requested(fact, appId);
     }
-    if (frameworkFacts.length > 0) {
+    const declaredFrameworks = [
+      ...new Set(
+        frameworkFacts
+          .filter((fact) => fact.value !== 'node-typescript')
+          .map((fact) => fact.value),
+      ),
+    ];
+    if (declaredFrameworks.length > 0) {
       notes.push(
-        `The request names ${frameworkFacts.map((fact) => fact.value).join(', ')}; only the React + Vite template is verified, so the plan reports the gap.`,
+        `The request names ${declaredFrameworks.join(', ')}; only React (Vite) and server-rendered Node.js web targets are verified, so the plan reports the gap.`,
       );
     }
-    const pages = buildPages(webFacts, extraction, 'web', appId, ledger, firstUiKind === 'web');
+
+    const requestedPages = buildPages(webFacts, extraction, 'web', appId, ledger, firstUiKind === 'web');
+    const pages = serverBlog
+      ? requestedPages.map((page) => {
+          const route = NODE_BLOG_PAGE_ROUTES[page.archetype];
+          if (route === undefined || page.route === undefined) return page;
+          // The generic list archetype is named for its React route ("/records");
+          // in a publication the same requirement is the post archive.
+          return page.archetype === 'list'
+            ? { ...page, id: 'posts', name: 'Posts', title: 'Posts', route }
+            : { ...page, route };
+        })
+      : requestedPages;
+
     applications.push({
       id: appId,
       kind: 'web',
-      framework: 'react',
+      framework,
       language: 'typescript',
-      buildSystem: buildSystems.has('vite') || frameworkFacts.length === 0 ? 'vite' : 'vite',
-      deployment: 'static',
-      description: 'React single-page application built with Vite.',
+      buildSystem,
+      deployment: serverBlog ? 'node-server' : 'static',
+      description: serverBlog
+        ? 'Server-rendered Node.js publication with a layered router, typed content and no runtime dependencies.'
+        : 'React single-page application built with Vite.',
       pages,
       apiEndpoints: [],
       auth: { required: false, strategy: 'none' },
@@ -356,11 +409,26 @@ export function interpretRequirement(
     if (frameworkFacts.length === 0) {
       ledger.add('framework', 'react', 'default', 'framework.web-default', {
         applicationId: appId,
-        notes: 'React is the only verified web framework.',
+        notes: 'React is the only verified interactive web framework.',
+      });
+    } else if (serverBlog && nodeWebFact === undefined) {
+      ledger.add('framework', 'node-typescript', 'derived', 'framework.node-blog-inferred', {
+        applicationId: appId,
+        notes: 'A Node.js publication was recognised from the request even though the clause split separated the terms.',
       });
     }
-    ledger.add('build-system', 'vite', 'default', 'build.web-default', { applicationId: appId });
-    ledger.add('platform', 'browser', 'default', 'platform.web', { applicationId: appId });
+    ledger.add('build-system', buildSystem, 'default', serverBlog ? 'build.node-blog' : 'build.web-default', {
+      applicationId: appId,
+    });
+    ledger.add('platform', serverBlog ? 'node-server' : 'browser', 'default', serverBlog ? 'platform.node-server' : 'platform.web', {
+      applicationId: appId,
+    });
+    if (serverBlog) {
+      ledger.add('deployment', 'node-server', 'derived', 'deployment.node-blog', {
+        applicationId: appId,
+        notes: 'The publication is served by a Node.js process; it is not a static export.',
+      });
+    }
   }
 
   if (requestedKinds.has('mobile')) {
@@ -495,7 +563,16 @@ export function interpretRequirement(
   const loginPage = webApp?.pages.some((page) => page.archetype === 'login') === true;
 
   if ((authRequested || loginPage) && webApp !== undefined) {
-    if (backendApp === undefined) {
+    if (webApp.framework === 'node-typescript') {
+      // Never silently drop the requirement: it is represented in the spec so
+      // validation reports it as unsupported with a reason and an alternative.
+      webApp.auth = { required: true, strategy: 'jwt' };
+      ledger.add('auth', 'required', 'requested', 'auth.server-blog', {
+        applicationId: webApp.id,
+        notes:
+          'Authentication was requested, but the Node.js publication target has no accounts or sessions; planning reports it as unsupported.',
+      });
+    } else if (backendApp === undefined) {
       const message =
         'A login page was requested but there is no backend to authenticate against. Authentication cannot be implemented client-side.';
       if (!clarifications.some((entry) => entry.field === 'applications.web.auth')) {
@@ -535,10 +612,12 @@ export function interpretRequirement(
   /* ------------------------------------------------------ design system */
   const styleFacts = extraction.facts.filter((fact) => fact.category === 'design.style');
   const themeFacts = extraction.facts.filter((fact) => fact.category === 'design.theme');
+  const presetFacts = extraction.facts.filter((fact) => fact.category === 'design.preset');
   const layoutFacts = extraction.facts.filter((fact) => fact.category === 'design.layout');
   const layoutValues = [...new Set(layoutFacts.map((fact) => fact.value))];
   const styles = [...new Set(styleFacts.map((fact) => fact.value))];
   const themes = [...new Set(themeFacts.map((fact) => fact.value).filter((value) => value !== 'system'))];
+  const presets = [...new Set(presetFacts.map((fact) => fact.value))];
 
   if (styles.length > 1) {
     contradictions.push({
@@ -556,6 +635,14 @@ export function interpretRequirement(
       values: themes,
     });
   }
+  if (presets.length > 1) {
+    contradictions.push({
+      id: 'contradiction-design-preset',
+      description: `Two conflicting colour presets were requested: ${presets.join(' and ')}.`,
+      fields: ['design.preset'],
+      values: presets,
+    });
+  }
   // Every contradiction blocks planning until the user resolves it, exactly once.
   for (const contradiction of contradictions) {
     if (clarifications.some((entry) => entry.field === contradiction.fields[0])) continue;
@@ -570,15 +657,29 @@ export function interpretRequirement(
 
   for (const fact of styleFacts) ledger.requested(fact, null);
   for (const fact of themeFacts) ledger.requested(fact, null);
+  for (const fact of presetFacts) ledger.requested(fact, null);
   for (const fact of layoutFacts) ledger.requested(fact, null);
   for (const color of extraction.colors) {
     ledger.add('design.color', color.value, 'requested', 'design.color', { evidence: color.evidence });
   }
 
-  const style = (styles[0] ?? 'default') as ProjectSpec['design']['style'];
+  // A publication defaults to the editorial token set; other web apps keep the
+  // neutral default. This is a documented default, not an inference about intent.
+  const defaultStyle = serverRenderedWeb ? 'editorial' : 'default';
+  const style = (styles[0] ?? defaultStyle) as ProjectSpec['design']['style'];
   const theme = (themes[0] ?? 'dark') as ProjectSpec['design']['theme'];
+  const preset = presets[0] ?? 'default';
+  if (presets.length === 0) {
+    ledger.add('design.preset', preset, 'default', 'design.preset-default', {
+      notes: 'No named colour preset was described; the style palette is used.',
+    });
+  }
   if (styles.length === 0) {
-    ledger.add('design.style', style, 'default', 'design.style-default', { notes: 'No visual style was described.' });
+    ledger.add('design.style', style, 'default', 'design.style-default', {
+      notes: serverRenderedWeb
+        ? 'No visual style was described; the editorial publication style is used.'
+        : 'No visual style was described.',
+    });
   }
   if (themes.length === 0) {
     ledger.add('design.theme', theme, 'default', 'design.theme-default', { notes: 'Default theme is dark.' });
@@ -596,11 +697,25 @@ export function interpretRequirement(
     ledger.add('design.layout', 'mobile-tabs', 'default', 'design.layout-mobile');
   }
 
-  const palette = extraction.colors.length > 0 ? extraction.colors.map((color) => color.value) : [...(DEFAULT_PALETTES[style] ?? DEFAULT_PALETTES['default'] ?? [])];
+  // A named preset owns the palette: leaving the list empty lets the design
+  // engine resolve it for the requested theme instead of freezing the style's
+  // default colours into the specification. Explicit colours always win.
+  const palette =
+    extraction.colors.length > 0
+      ? extraction.colors.map((color) => color.value)
+      : presets.length > 0
+        ? []
+        : [...(DEFAULT_PALETTES[style] ?? DEFAULT_PALETTES['default'] ?? [])];
   if (extraction.colors.length === 0) {
-    ledger.add('design.color', palette.join(','), 'default', 'design.palette-default', {
-      notes: `Palette derived from the ${style} token set.`,
-    });
+    if (presets.length > 0) {
+      ledger.add('design.color', preset, 'derived', 'design.palette-from-preset', {
+        notes: `Palette resolved from the ${preset} preset for the ${theme} theme.`,
+      });
+    } else {
+      ledger.add('design.color', palette.join(','), 'default', 'design.palette-default', {
+        notes: `Palette derived from the ${style} token set.`,
+      });
+    }
   }
 
   /* ----------------------------------------------------------- testing */
@@ -637,7 +752,15 @@ export function interpretRequirement(
   const name =
     nameFact?.value ??
     (applications.length === 1
-      ? `${applications[0]?.framework === 'fastapi' ? 'FastAPI' : applications[0]?.kind === 'mobile' ? 'React Native' : 'React'} App`
+      ? `${
+          applications[0]?.framework === 'fastapi'
+            ? 'FastAPI'
+            : applications[0]?.kind === 'mobile'
+              ? 'React Native'
+              : applications[0]?.framework === 'node-typescript'
+                ? 'Node'
+                : 'React'
+        } App`
       : 'Full Stack App');
   if (nameFact !== null) {
     ledger.add('project.name', name, 'requested', 'project.name', { evidence: nameFact.evidence });
@@ -664,6 +787,7 @@ export function interpretRequirement(
     design: {
       style,
       theme,
+      preset,
       palette: [...new Set(palette.map((color) => color.toLowerCase()))],
       layout,
       responsive: true,
@@ -725,5 +849,6 @@ export function interpretRequirement(
     ledger: ledgerEntries,
     notes,
     extraction,
+    intents: classifyIntent(text),
   };
 }

@@ -35,7 +35,10 @@ import {
 import { renderTemplate, readTemplateManifest, renderTemplateSet, type TemplateManifest } from '@assembler/template-engine';
 import { computeDesign, type DesignTokens } from './design.js';
 import { analyzeGraph, buildGraph, type DependencyGraph, type GraphAnalysis } from './graph.js';
-import { resolveRelativeImport, analyzeModule } from './imports.js';
+import { withImportAnalysis } from './analysis.js';
+import { evaluatePlannedCapabilities } from './capabilities.js';
+import { planNodeBlog } from './node-blog.js';
+import { ASSEMBLER_VERSION, PLANNER_VERSION } from './version.js';
 import { loadKnowledge, type VersionTarget } from './knowledge.js';
 import {
   createPlannedFile,
@@ -46,8 +49,7 @@ import {
   type FileKind,
 } from './manifest.js';
 
-export const PLANNER_VERSION = '0.1.0';
-export const ASSEMBLER_VERSION = '0.1.0';
+export { ASSEMBLER_VERSION, PLANNER_VERSION };
 
 export interface PlanBlocker {
   readonly code: string;
@@ -125,6 +127,7 @@ export interface Blueprint {
   readonly design: {
     readonly style: string;
     readonly theme: string;
+    readonly preset: string;
     readonly layout: string;
     readonly palette: readonly string[];
     readonly tokens: DesignTokens;
@@ -296,7 +299,23 @@ export async function planProject(input: PlanInput): Promise<PlanResult> {
   if (webApplication === undefined) {
     blockers.push({
       code: 'NO_SUPPORTED_TARGET',
-      message: 'The specification contains no React web application to assemble.',
+      message: 'The specification contains no supported web application to assemble.',
+    });
+  }
+
+  // Target selection is by the specification's framework, never by guessing from
+  // the request text twice. The Node.js publication has its own planner.
+  if (webApplication !== undefined && webApplication.framework === 'node-typescript') {
+    return planNodeBlog({
+      workspace,
+      spec,
+      application: webApplication,
+      knowledge,
+      ...(input.environment === undefined ? {} : { environment: input.environment }),
+      blockers,
+      unresolved,
+      limitations,
+      ...(input.now === undefined ? {} : { now: input.now }),
     });
   }
 
@@ -324,6 +343,17 @@ export async function planProject(input: PlanInput): Promise<PlanResult> {
       message: 'knowledge/versions.json does not define the "web" target',
     });
   }
+  targets.push({
+    applicationId: webApplication?.id ?? 'web',
+    kind: 'web',
+    framework: 'react',
+    buildSystem: 'vite',
+    language: 'typescript',
+    deployment: 'static',
+    templateId: templateManifest.id,
+    templateVersion: templateManifest.version,
+    requiredCapabilities: [...target.toolchain],
+  });
 
   /* ----------------------------------------------------------------- pages */
   const pages = webApplication === undefined ? [] : planPages(webApplication);
@@ -650,47 +680,7 @@ export async function planProject(input: PlanInput): Promise<PlanResult> {
   }
 
   /* ------------------------------------------------------- import analysis */
-  const projectPaths = new Set(files.map((file) => file.path));
-  const withImports: PlannedFile[] = [];
-  for (const file of files) {
-    if (!file.path.endsWith('.ts') && !file.path.endsWith('.tsx')) {
-      withImports.push(file);
-      continue;
-    }
-    const analysis = analyzeModule(file.path, file.content);
-    for (const parseError of analysis.parseErrors) {
-      blockers.push({ code: 'GENERATED_PARSE_ERROR', message: `${file.path}: ${parseError}` });
-    }
-    const resolvedImports: string[] = [];
-    for (const specifier of analysis.relativeImports) {
-      const resolved = resolveRelativeImport(file.path, specifier, projectPaths);
-      if (resolved === null) {
-        blockers.push({
-          code: 'IMPORT_UNRESOLVED',
-          message: `${file.path} imports "${specifier}", which is not in the file manifest`,
-        });
-        continue;
-      }
-      resolvedImports.push(resolved);
-    }
-    for (const specifier of analysis.externalImports) {
-      if (specifier.startsWith('node:')) continue;
-      const packageName = specifier.startsWith('@')
-        ? specifier.split('/').slice(0, 2).join('/')
-        : (specifier.split('/')[0] ?? specifier);
-      if (packageName === '' || declaredDependencies.has(packageName)) continue;
-      blockers.push({
-        code: 'IMPORT_UNDECLARED_DEPENDENCY',
-        message: `${file.path} imports "${packageName}", which is missing from package.json`,
-      });
-    }
-    withImports.push({
-      ...file,
-      imports: [...new Set(resolvedImports)].sort(),
-      externalImports: analysis.externalImports,
-      exports: analysis.exports.length > 0 ? analysis.exports : file.exports,
-    });
-  }
+  const withImports = withImportAnalysis(files, declaredDependencies, blockers);
 
   const manifest: FileManifest = {
     schemaVersion: '1.0',
@@ -711,29 +701,12 @@ export async function planProject(input: PlanInput): Promise<PlanResult> {
   }
 
   /* --------------------------------------------------------- capabilities */
-  const requiredCapabilities = [...new Set(target.toolchain)];
-  const capabilities: CapabilityRequirement[] = requiredCapabilities.map((capability) => {
-    if (input.environment === undefined) {
-      return { capability, status: 'not-checked', reason: 'Environment was not scanned for this plan' };
-    }
-    const result = input.environment.capabilities.find((entry) => entry.capability === capability);
-    if (result === undefined) {
-      return { capability, status: 'unknown', reason: 'The environment manager did not evaluate this capability' };
-    }
-    return { capability, status: result.status, reason: result.reason };
-  });
-  for (const entry of capabilities) {
-    if (entry.status === 'unsatisfied') {
-      blockers.push({
-        code: 'CAPABILITY_UNSATISFIED',
-        message: `${entry.capability} is unsatisfied: ${entry.reason}`,
-        hint: 'Run `assembler doctor` for the detected toolchain and installation options.',
-      });
-    }
-    if (entry.status === 'unknown') {
-      limitations.push(`Capability ${entry.capability} could not be verified: ${entry.reason}`);
-    }
-  }
+  const capabilities = evaluatePlannedCapabilities(
+    target.toolchain,
+    input.environment,
+    blockers,
+    limitations,
+  );
 
   const commands: CommandPlan[] = (['install', 'typecheck', 'test', 'build'] as const).map((kind) => ({
     kind,
@@ -772,6 +745,7 @@ export async function planProject(input: PlanInput): Promise<PlanResult> {
     design: {
       style: spec.design.style,
       theme: tokens.theme,
+      preset: tokens.presetName,
       layout: spec.design.layout,
       palette: computed.palette,
       tokens,
@@ -843,7 +817,9 @@ export function describePlan(blueprint: Blueprint): string[] {
   for (const target of blueprint.targets) {
     lines.push(`Target: ${target.kind} — ${target.framework} (${target.templateId}@${target.templateVersion})`);
   }
-  lines.push(`Design: ${blueprint.design.style} / ${blueprint.design.theme} / ${blueprint.design.layout}`);
+  lines.push(
+    `Design: ${blueprint.design.style} / ${blueprint.design.theme} / ${blueprint.design.preset} / ${blueprint.design.layout}`,
+  );
   lines.push(`Files: ${blueprint.files.length}`);
   if (blueprint.components.length > 0) {
     lines.push(
